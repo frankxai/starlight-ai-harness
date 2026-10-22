@@ -1,7 +1,7 @@
 {
   "name": "starlight-ai-harness",
   "description": "Public template: oh-my-starlight (OmS) routing brain + receipts + eval battery.",
-  "note": "Exported by oms/export_template.py from the private agentic-ops source. Regenerate, never hand-edit this or SANITIZATION.md.",
+  "note": "Exported by oms/export_template.py from the private oh-my-starlight source. Regenerate, never hand-edit this or SANITIZATION.md.",
   "schema": "fleet/routing.schema.json",
   "schema_note": "Schema is the SoT for models, chains, caps, and package version (read version from the schema, never duplicate it here).",
   "files": [
@@ -12,6 +12,14 @@
     {
       "path": "fleet/route_task.py",
       "role": "classify + route + receipt recording (fast-path classifier)"
+    },
+    {
+      "path": "fleet/route_classifier.py",
+      "role": "fast-path task classifier (imported by route_task)"
+    },
+    {
+      "path": "fleet/route_executor.py",
+      "role": "schema-driven chain resolution + receipt persistence (imported by route_task and gateway_call)"
     },
     {
       "path": "fleet/gateway_call.py",

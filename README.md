@@ -10,6 +10,7 @@ assets that drive it.
 - **routing.schema.json** - single source of truth: task classes, model chains
   and fallbacks, spend caps, eval battery def, receipts config
 - **route_task.py** - classify a task, produce the model chain, record receipts
+- **route_classifier.py / route_executor.py** - imported by the above
 - **gateway_call.py** - gateway caller with 403-catch fallback walking
 - **harness_eval.py** - 11-task battery, deterministic checkers only (no LLM
   judging), `selftest`, `run-gateway`, `report`
@@ -22,8 +23,9 @@ assets that drive it.
 
 ## Quick start
 
+Stdlib only - no dependencies. Python 3.11+ recommended.
+
 ```bash
-python -m pip install --upgrade nothing  # stdlib only, no dependencies
 python oms/verify.py                     # gate: files, schema<->battery, selftest
 python fleet/route_task.py "review this PR"
 python fleet/harness_eval.py selftest
@@ -51,5 +53,5 @@ export STARLIGHT_RECEIPTS_PATH=/your/dir/receipts.jsonl
 
 ## Provenance
 
-Exported from the Starlight omniscient-routing package by `oms/export_template.py`.
-See `SANITIZATION.md` for every rewrite applied to personalize -> generic.
+Exported from the private oh-my-starlight (OmS) package by `oms/export_template.py`,
+which sanitizes machine specifics. See `SANITIZATION.md`.
