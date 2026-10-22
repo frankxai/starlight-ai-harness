@@ -30,6 +30,14 @@
       "role": "11-task deterministic battery + runner + report"
     },
     {
+      "path": "fleet/run_opencode.py",
+      "role": "run the battery through the opencode rail (opencode run -> deterministic checkers -> record)"
+    },
+    {
+      "path": "fleet/cross_harness.py",
+      "role": "deterministic cross-rail comparison report (battery rows + plugin receipts, no model calls)"
+    },
+    {
       "path": "fleet/gen_omo_config.py",
       "role": "generate ~/.omo/omo.jsonc from the schema"
     },
@@ -58,8 +66,10 @@
     "python fleet/route_task.py \"<task text>\" [--record success --used <model> --cost <usd> --latency <ms>]",
     "python fleet/gateway_call.py <class> \"<task text>\"",
     "python fleet/harness_eval.py run-gateway --model <vercel/model>",
+    "python fleet/run_opencode.py --model <opencode/model>",
     "python fleet/harness_eval.py selftest",
     "python fleet/harness_eval.py report",
+    "python fleet/cross_harness.py",
     "python fleet/gen_omo_config.py",
     "python fleet/credit_watchdog.py",
     "python fleet/night_cap_check.py",
