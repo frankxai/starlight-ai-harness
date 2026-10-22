@@ -1,0 +1,5 @@
+# receipts and eval telemetry are local, not template content
+receipts/
+evals/
+__pycache__/
+*.pyc

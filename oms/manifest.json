@@ -1,0 +1,72 @@
+{
+  "name": "starlight-ai-harness",
+  "description": "Public template: oh-my-starlight (OmS) routing brain + receipts + eval battery.",
+  "note": "Exported by oms/export_template.py from the private agentic-ops source. Regenerate, never hand-edit this or SANITIZATION.md.",
+  "schema": "fleet/routing.schema.json",
+  "schema_note": "Schema is the SoT for models, chains, caps, and package version (read version from the schema, never duplicate it here).",
+  "files": [
+    {
+      "path": "fleet/routing.schema.json",
+      "role": "SoT: task classes, model chains, token pass keys, night cap, receipts/eval battery config"
+    },
+    {
+      "path": "fleet/route_task.py",
+      "role": "classify + route + receipt recording (fast-path classifier)"
+    },
+    {
+      "path": "fleet/gateway_call.py",
+      "role": "gateway caller with 403 fallback walking"
+    },
+    {
+      "path": "fleet/harness_eval.py",
+      "role": "11-task deterministic battery + runner + report"
+    },
+    {
+      "path": "fleet/gen_omo_config.py",
+      "role": "generate ~/.omo/omo.jsonc from the schema"
+    },
+    {
+      "path": "fleet/credit_watchdog.py",
+      "role": "Token Pass per-key spend watchdog"
+    },
+    {
+      "path": "fleet/night_cap_check.py",
+      "role": "unattended-run spend gate"
+    },
+    {
+      "path": "fleet/weekly_routing_review.py",
+      "role": "receipts -> routing diff proposals (human approval)"
+    },
+    {
+      "path": "oms/opencode-plugin/index.ts",
+      "role": "receipt auto-capture from OpenCode agent-loop step events"
+    },
+    {
+      "path": "oms/verify.py",
+      "role": "package release gate (files, schema-battery parity, selftest, route smoke, config sync)"
+    }
+  ],
+  "entry_commands": [
+    "python fleet/route_task.py \"<task text>\" [--record success --used <model> --cost <usd> --latency <ms>]",
+    "python fleet/gateway_call.py <class> \"<task text>\"",
+    "python fleet/harness_eval.py run-gateway --model <vercel/model>",
+    "python fleet/harness_eval.py selftest",
+    "python fleet/harness_eval.py report",
+    "python fleet/gen_omo_config.py",
+    "python fleet/credit_watchdog.py",
+    "python fleet/night_cap_check.py",
+    "python fleet/weekly_routing_review.py",
+    "python oms/verify.py"
+  ],
+  "verify": {
+    "what": "oms/verify.py",
+    "checks": [
+      "manifest file list resolves on disk",
+      "schema parses and its battery task list matches harness_eval.TASKS",
+      "harness_eval selftest (all checkers against ground truth, no model calls)",
+      "route_task classifies a smoke prompt into a class the schema actually serves",
+      "gen_omo_config output on disk contains the schema's primary model (config is in sync)"
+    ],
+    "rule": "any check failing = package not releasable"
+  }
+}
