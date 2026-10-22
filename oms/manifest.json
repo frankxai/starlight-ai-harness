@@ -38,6 +38,10 @@
       "role": "deterministic cross-rail comparison report (battery rows + plugin receipts, no model calls)"
     },
     {
+      "path": "fleet/report_dashboard.py",
+      "role": "render cross-harness report as self-contained styled HTML; --check self-grades"
+    },
+    {
       "path": "fleet/gen_omo_config.py",
       "role": "generate ~/.omo/omo.jsonc from the schema"
     },
