@@ -405,13 +405,22 @@ def cmd_selftest(args):
             continue
         if not bool(spec["check"](want)):
             fails.append(task)
+
+    # negative cases: known-slop inputs must FAIL, not pass silently
+    _neg_html = ('<!doctype html><html><head><title>x</title></head>'
+                 '<body><img src="hero.png">'
+                 '<label>Search</label><button>Go</button></body></html>')
+    if _check_html(_neg_html):
+        fails.append("html-design/accepts-slop(no-lang-viewport-alt)")
+
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:
         fails.append("code")
     if fails:
         print(f"SELFTEST FAIL: {fails}")
         raise SystemExit(1)
-    print("selftest OK: all 12 checkers pass ground truth")
+    print("selftest OK: all 12 checkers pass ground truth, "
+          "html-design rejects slop")
 
 
 def main():

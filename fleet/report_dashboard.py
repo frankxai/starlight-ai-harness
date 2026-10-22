@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REPORT_JSON = ROOT / "fleet" / "reports" / "cross-harness-latest.json"
+ROUTING_SCHEMA = ROOT / "fleet" / "routing.schema.json"
 OUT_HTML = ROOT / "fleet" / "reports" / "dashboard.html"
 
 _DOC = """\
@@ -77,6 +78,7 @@ footer{{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;
   color:var(--muted);font-size:.82rem}}
 footer code{{font-family:var(--mono);color:var(--cyan)}}
 a{{color:var(--cyan)}}
+.why{{color:var(--muted);font-size:.85rem;margin:.6rem 0 1.25rem;max-width:48rem}}
 @media (prefers-reduced-motion:reduce){{*{{animation:none;transition:none}}}}
 </style>
 </head>
@@ -129,6 +131,37 @@ a{{color:var(--cyan)}}
   </div>
 </section>
 </main>
+<section aria-labelledby="sec-routing">
+  <h2 id="sec-routing">Routing SoT · chains, caps, pricing</h2>
+  <div class="scroll">
+  <table>
+  <caption>Task classes from routing.schema.json: primary model, fallback chain, per-class ceiling.</caption>
+  <thead><tr>
+    <th scope="col">Class</th><th scope="col">Primary</th>
+    <th scope="col">Fallbacks</th><th scope="col" class="num">Ceiling</th>
+  </tr></thead>
+  <tbody>
+{chain_rows}
+  </tbody>
+  </table>
+  </div>
+  <p class="why">{primary_why}</p>
+  <div class="scroll">
+  <table>
+  <caption>Token Pass keys and gates; gateway model pricing ($ per M tokens).</caption>
+  <thead><tr>
+    <th scope="col">Gate</th><th scope="col" class="num">Value</th>
+    <th scope="col">Model</th>
+    <th scope="col" class="num">In</th><th scope="col" class="num">Cached</th>
+    <th scope="col" class="num">Out</th>
+  </tr></thead>
+  <tbody>
+{cap_rows}
+{priced_rows}
+  </tbody>
+  </table>
+  </div>
+</section>
 <footer role="contentinfo">
 <p>Deterministic render of <code>fleet/reports/cross-harness-latest.json</code> ·
 regenerate with <code>python fleet/report_dashboard.py</code> ·
@@ -198,6 +231,53 @@ def build() -> str:
 
     gen = data["generated_at"][:19].replace("T", " ") + " UTC"
 
+    schema = json.loads(ROUTING_SCHEMA.read_text(encoding="utf-8"))
+    tp = schema["token_pass"]
+
+    chain_rows = []
+    for cls, spec in schema["task_classes"].items():
+        chain_rows.append(
+            f'    <tr><td><strong>{html.escape(cls)}</strong></td>'
+            f'<td><code>{html.escape(spec["primary"])}</code></td>'
+            f'<td>{" · ".join(f"<code>{html.escape(f)}</code>" for f in spec["fallbacks"] or ["—"])}</td>'
+            f"<td class=\"num\">{_fmt_num(spec.get('cost_ceiling_usd'), '${:,.0f}')}</td></tr>"
+        )
+
+    cap_rows = [
+        f'    <tr><td>Night cap (unattended)</td><td class="num">${schema["night_cap_usd"]}</td>'
+        f'<td>·</td><td class="num">·</td><td class="num">·</td><td class="num">·</td></tr>',
+    ]
+    for label, val in (
+        ("Credit quota / key", tp["credit_quota_per_key_usd"]),
+        ("Soft alert / key", tp["soft_alert_usd_per_key"]),
+        ("Hard cap / key", tp["hard_cap_usd_per_key"]),
+        ("Keys configured", len(tp["keys"])),
+    ):
+        cap_rows.append(
+            f'    <tr><td>{html.escape(str(label))}</td>'
+            f"<td class=\"num\">{'${:,.0f}'.format(val) if isinstance(val, (int, float)) else val}</td>"
+            f"<td>·</td><td class=\"num\">·</td><td class=\"num\">·</td><td class=\"num\">·</td></tr>"
+        )
+
+    priced_rows = []
+    for model, mp in tp["models"].items():
+        priced_rows.append(
+            f'    <tr><td>Gateway</td><td class="num">·</td>'
+            f'<td><code>{html.escape(model)}</code></td>'
+            f"<td class=\"num\">${mp['input']:.2f}</td>"
+            f"<td class=\"num\">${mp['cached']:.2f}</td>"
+            f"<td class=\"num\">${mp['output']:.2f}</td></tr>"
+        )
+    for model in schema["free_tier"]["models"]:
+        priced_rows.append(
+            f'    <tr><td>Free tier</td><td class="num">·</td>'
+            f'<td><code>{html.escape(model)}</code></td>'
+            f'<td class="num">${0:.2f}</td><td class="num">$0.00</td>'
+            f'<td class="num">$0.00</td></tr>'
+        )
+
+    primary_why = html.escape(schema["primary_why"])
+
     html_out = _DOC.format(
         gen_attr=html.escape(data["generated_at"][:19]),
         gen=html.escape(gen),
@@ -207,6 +287,10 @@ def build() -> str:
         kpi_free=free_passes,
         battery_rows="\n".join(battery_rows),
         receipt_rows="\n".join(receipt_rows),
+        chain_rows="\n".join(chain_rows),
+        cap_rows="\n".join(cap_rows),
+        priced_rows="\n".join(priced_rows),
+        primary_why=primary_why,
     )
     return html_out
 
@@ -229,6 +313,8 @@ def selfcheck(html_out: str) -> list[str]:
     want('role="banner"' in low and 'role="contentinfo"' in low, "landmarks missing")
     want('scope="col"' in low, "table headers must carry scope=col")
     want("<caption>" in low, "captions missing")
+    want('id="sec-routing"' in low, "routing SoT section missing")
+    want("night cap" in low and "hard cap" in low, "cap gates missing")
     for token in ("#0a0a0b", "#10b981", "#06b6d4", "#f59e0b"):
         want(token in low, f"token {token} missing")
     want("<time datetime=" in low, "time element missing")
