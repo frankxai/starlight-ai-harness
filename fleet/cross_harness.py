@@ -25,7 +25,8 @@ REPORTS = HERE / "reports"
 
 
 def _agg_battery(rows: list[dict]) -> list[dict]:
-    agg = defaultdict(lambda: {"n": 0, "ok": 0, "latencies": [], "costs": []})
+    agg = defaultdict(lambda: {"n": 0, "ok": 0, "latencies": [], "costs": [],
+                               "tasks": {}})
     for r in rows:
         key = (r.get("harness", "?"), r["model"])
         a = agg[key]
@@ -35,6 +36,9 @@ def _agg_battery(rows: list[dict]) -> list[dict]:
             a["latencies"].append(r["latency_ms"])
         if r.get("cost_usd") is not None:
             a["costs"].append(r["cost_usd"])
+        t = a["tasks"].setdefault(r["task"], {"n": 0, "ok": 0})
+        t["n"] += 1
+        t["ok"] += int(bool(r["ok"]))
     return [
         {
             "harness": h,
@@ -43,6 +47,11 @@ def _agg_battery(rows: list[dict]) -> list[dict]:
             "pass_rate": round(a["ok"] / a["n"], 3),
             "avg_latency_ms": int(sum(a["latencies"]) / len(a["latencies"])) if a["latencies"] else None,
             "total_cost_usd": round(sum(a["costs"]), 6) if a["costs"] else None,
+            "cost_per_pass_usd": round(sum(a["costs"]) / a["ok"], 6)
+                if a["costs"] and a["ok"] else None,
+            # fails-only task matrix: full 11 passes every cell is the headline
+            "fails": sorted(f"{task} {t['ok']}/{t['n']}"
+                            for task, t in a["tasks"].items() if t["ok"] < t["n"]),
         }
         # harness first so rails read together
         for (h, m), a in sorted(agg.items())
@@ -123,13 +132,15 @@ def build() -> tuple[str, dict]:
           "",
           "## Battery rows by rail (fleet/evals/eval_results.jsonl)",
           "",
-          "| harness | model | n | pass | avg latency | cost ($) |",
-          "|---|---|---|---|---|---|"]
+          "| harness | model | n | pass | avg latency | cost ($) | $/pass | task fails |",
+          "|---|---|---|---|---|---|---|---|"]
     for b in battery:
         md.append(
             f"| {b['harness']} | {b['model']} | {b['n']} | {b['pass_rate']:.0%} | "
             f"{str(b['avg_latency_ms']) + ' ms' if b['avg_latency_ms'] else 'n/a'} | "
-            f"{b['total_cost_usd'] if b['total_cost_usd'] is not None else 'n/a'} |")
+            f"{b['total_cost_usd'] if b['total_cost_usd'] is not None else 'n/a'} | "
+            f"{b['cost_per_pass_usd'] if b['cost_per_pass_usd'] is not None else 'n/a'} | "
+            f"{', '.join(b['fails']) if b['fails'] else 'none'} |")
     md += ["",
            "## Plugin receipts (fleet/receipts/opencode.jsonl, harness overhead)",
            "",

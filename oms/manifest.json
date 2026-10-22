@@ -50,6 +50,10 @@
       "role": "unattended-run spend gate"
     },
     {
+      "path": "fleet/nightly_eval.py",
+      "role": "nightly battery orchestrator (gates, gateway rail, free opencode rail when RAM >= 4 GiB, report)"
+    },
+    {
       "path": "fleet/weekly_routing_review.py",
       "role": "receipts -> routing diff proposals (human approval)"
     },
@@ -73,6 +77,7 @@
     "python fleet/gen_omo_config.py",
     "python fleet/credit_watchdog.py",
     "python fleet/night_cap_check.py",
+    "python fleet/nightly_eval.py  # scheduled-task target after GATE approval",
     "python fleet/weekly_routing_review.py",
     "python oms/verify.py"
   ],

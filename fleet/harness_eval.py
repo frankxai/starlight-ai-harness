@@ -230,7 +230,27 @@ def gateway_call(model: str, prompt: str, timeout: int = 120) -> dict:
     }
 
 
-# ---------------- persistence + report ----------------
+def _schema_price(model: str) -> dict | None:
+    try:
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        return schema["token_pass"]["models"].get(model)
+    except (OSError, KeyError, json.JSONDecodeError):
+        return None
+
+
+def usage_cost(model: str, usage: dict) -> float | None:
+    """Derive $cost from the gateway usage object using schema pricing ($/Mtok)."""
+    p = _schema_price(model)
+    if not p:
+        return None
+    t_in = usage.get("prompt_tokens", 0) or 0
+    t_cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0
+    t_out = usage.get("completion_tokens", 0) or 0
+    return round(
+        (t_in - t_cached) / 1e6 * p.get("input", 0.0)
+        + t_cached / 1e6 * p.get("cached", 0.0)
+        + t_out / 1e6 * p.get("output", 0.0), 6)
+
 
 def append(result: dict) -> None:
     EVALS.mkdir(parents=True, exist_ok=True)
@@ -292,6 +312,12 @@ def cmd_run_gateway(args):
             rec["reasoning_only"] = True
             ok = False  # an empty answer can never pass, whatever caused it
             rec["ok"] = False
+        u = {k: u.get(k) for k in ("prompt_tokens", "completion_tokens")} if u else None
+        if u is not None and (u.get("prompt_tokens") or u.get("completion_tokens")):
+            rec["usage"] = u
+            cost = usage_cost(args.model, u)
+            if cost is not None:
+                rec["cost_usd"] = cost
         append(rec)
         results[task] = {"ok": ok, "latency_ms": r["latency_ms"]}
     print(json.dumps(results, indent=2))
