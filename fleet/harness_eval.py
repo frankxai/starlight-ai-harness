@@ -4,7 +4,7 @@
 The measurement layer for the routing brain and every harness config. Each task
 has a deterministic checker (no LLM judging), so scores are objective.
 
-Battery v2 (11 tasks):
+Battery v2.1 (12 tasks):
   math            multi-step arithmetic with one true answer
   puzzle          ordering logic with one true answer
   instruction     strict output-format obedience
@@ -110,6 +110,49 @@ def _check_code(text: str) -> bool:
         return False
 
 
+def _check_html(text: str) -> bool:
+    """Front-end discipline probe: doctype + lang + viewport + alt + label-for +
+    present interactive element. Deterministic; measures trained slop habits."""
+    lower = text.strip().lower()
+    from html.parser import HTMLParser
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.doctype = False
+            self.lang = False
+            self.viewport = False
+            self.img_total = 0
+            self.img_bare = 0
+            self.label_for = 0
+            self.action_tag = 0
+
+        def handle_decl(self, decl):
+            if decl.strip().lower().startswith("doctype html"):
+                self.doctype = True
+
+        def handle_starttag(self, tag, attrs):
+            d = dict(attrs)
+            t = tag.lower()
+            if t == "html" and (d.get("lang") or "").strip():
+                self.lang = True
+            if t == "meta" and d.get("name", "").lower() == "viewport":
+                self.viewport = True
+            if t == "img":
+                self.img_total += 1
+                if not (d.get("alt") or "").strip():
+                    self.img_bare += 1
+            if t == "label" and (d.get("for") or "").strip():
+                self.label_for += 1
+            if t in ("button", "a", "input", "textarea", "select"):
+                self.action_tag += 1
+
+    p = P()
+    p.feed(text)
+    return (p.doctype and p.lang and p.viewport and p.img_total >= 1
+            and p.img_bare == 0 and p.label_for >= 1 and p.action_tag > 0)
+
+
 # ---------------- battery ----------------
 
 TASKS = {
@@ -192,6 +235,16 @@ TASKS = {
                    "comma-separated, uppercase. Reply with only those letters."),
         "truth": "B,D,E",
         "check": lambda t: _last_letter_csv(t) == "B,D,E",
+    },
+    "html-design": {
+        "prompt": ("Write a complete minimal HTML page. Requirements: starts with "
+                   "<!doctype html>; the <html> tag has a lang attribute; includes "
+                   "a viewport meta tag; contains exactly one <img> with a non-empty "
+                   "alt attribute; contains one <input> bound with <label for=...>; "
+                   "contains one <button> element. Reply with only the HTML code, "
+                   "nothing else."),
+        "truth": "doctype+lang+viewport+alt+label-for+button",
+        "check": _check_html,
     },
 }
 
@@ -338,6 +391,12 @@ def cmd_selftest(args):
         "json-format": '{"city": "Vienna", "year": 2026, "ok": true}',
         "date-arithmetic": "2026-11-13", "regex": r'r"^[A-Z][a-z]+-\d{3}$"',
         "counter": "4", "unit-chain": "6", "table-filter": "B,D,E",
+        "html-design": ('<!doctype html><html lang="en"><head>'
+                        '<meta name="viewport" content="width=device-width, '
+                        'initial-scale=1"></head><body>'
+                        '<img src="hero.png" alt="Dashboard overview">'
+                        '<label for="q">Search</label><input id="q">'
+                        '<button>Go</button></body></html>'),
     }
     fails = []
     for task, spec in TASKS.items():
@@ -352,7 +411,7 @@ def cmd_selftest(args):
     if fails:
         print(f"SELFTEST FAIL: {fails}")
         raise SystemExit(1)
-    print("selftest OK: all 11 checkers pass ground truth")
+    print("selftest OK: all 12 checkers pass ground truth")
 
 
 def main():

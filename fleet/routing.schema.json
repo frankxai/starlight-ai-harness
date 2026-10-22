@@ -60,11 +60,11 @@
     }
   },
   "eval_battery": {
-    "tasks": ["math", "puzzle", "instruction", "code", "extraction", "json-format", "date-arithmetic", "regex", "counter", "unit-chain", "table-filter"],
+    "tasks": ["math", "puzzle", "instruction", "code", "extraction", "json-format", "date-arithmetic", "regex", "counter", "unit-chain", "table-filter", "html-design"],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
     "nightly_cron": "starlight-nightly-eval (daily 03:30, deepseek-v4.1-flash) writes fleet/evals/eval_results.jsonl",
-    "free_tier_rule": "free models run via OpenCode subagents; gateway models via harness_eval run-gateway (max_tokens 4000: below that, reasoning-only models truncate to empty answers)"
+    "free_tier_rule": "free models run via OpenCode rails (subagent record, or opencode run with plugin capture via run_opencode.py); gateway models via harness_eval run-gateway (max_tokens 4000: below that, reasoning-only models truncate to empty answers)"
   },
   "feedback_loop": {
     "cron": "weekly-routing-review",
