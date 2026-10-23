@@ -20,18 +20,20 @@ FAST_RULES = [
     ("ultrabrain",    re.compile(r"\b(architect|design system|from scratch|greenfield|novel|research-grade|deep think)\b", re.I)),
     ("hard-reasoning",re.compile(r"\b(reason|plan|architect|debug root cause|multi.step|complex|deep codegen|long.context)\b", re.I)),
     ("bulk",          re.compile(r"\b(extract|classify|summarize (all|many|bulk)|batch|bulk|all files|every file)\b", re.I)),
+("content",       re.compile(r"\b(blog|newsletter|landing (page|copy)|social (post|caption)|seo|meta description|title tag|marketing|launch announce|case stud(y|ies)|outreach (email|message)|copy for)\b", re.I)),
     ("review",        re.compile(r"\b(review|lint|audit|check|verify|best practice|style)\b", re.I)),
     ("scout",         re.compile(r"\b(find|search|locate|list|explore|scout|map (the )?codebase|where is)\b", re.I)),
     ("code",          re.compile(r"\b(code|implement|refactor|edit|write|fix|add feature|change|update (the )?(file|function|module))\b", re.I)),
 ]
 
 LLM_PROMPT = """Classify the following task into exactly one of these classes:
-scout, review, bulk, code, hard-reasoning, vision, ultrabrain.
+scout, review, bulk, content, code, hard-reasoning, vision, ultrabrain.
 
 Definitions:
 - scout: fast exploration, file search, codebase mapping
 - review: code review, lint, style, best-practice
 - bulk: high-volume extraction, classification, summaries
+- content: customer-facing writing (blog, landing copy, SEO, newsletters, social)
 - code: everyday coding, edits, refactoring, docs
 - hard-reasoning: complex multi-step reasoning, deep codegen, planning
 - vision: image/video/multimodal analysis

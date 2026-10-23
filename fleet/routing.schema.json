@@ -1,46 +1,200 @@
 {
   "$schema": "https://starlight.ai/schemas/routing.v5.json",
   "version": 5,
-  "updated": "2026-10-21",
+  "updated": "2026-10-23",
   "night_cap_usd": 40,
   "night_cap_usd_note": "Nightly unattended spend cap across ALL models (Grok/Codex/etc). Separate from token_pass.hard_cap_usd (monthly $80 Token Pass credit).",
   "primary_model": "vercel/zai/glm-5.3",
   "primary_why": "Token Pass GLM 5.3: cheapest quality output ($4.40/1M), ZDR by default. Grok 4.6 (hermes) remains primary for critical/production work; this routing governs OpenCode swarm tiers.",
   "token_pass": {
     "team": "<your-team>",
-    "keys": ["<key-1>", "<key-2>", "<key-3>", "<key-4>"],
+    "keys": [
+      "<key-1>",
+      "<key-2>",
+      "<key-3>",
+      "<key-4>"
+    ],
     "credit_quota_per_key_usd": 80,
     "total_monthly_credit_usd": 320,
     "soft_alert_usd_per_key": 60,
     "hard_cap_usd_per_key": 80,
     "models": {
-      "vercel/zai/glm-5.3": { "input": 1.40, "cached": 0.26, "output": 4.40, "strengths": ["code", "refactor", "docs", "chat", "instruction-following"] },
-      "vercel/moonshotai/kimi-k3": { "input": 3.00, "cached": 0.30, "output": 15.00, "strengths": ["hard-reasoning", "long-context", "deep-codegen", "planning"] },
-      "vercel/deepseek/deepseek-v4.1-flash": { "input": 0.15, "cached": 0.003, "output": 0.60, "strengths": ["bulk-extraction", "classification", "summaries", "subagent-background"] }
+      "vercel/zai/glm-5.3": {
+        "input": 1.4,
+        "cached": 0.26,
+        "output": 4.4,
+        "strengths": [
+          "code",
+          "refactor",
+          "docs",
+          "chat",
+          "instruction-following"
+        ]
+      },
+      "vercel/moonshotai/kimi-k3": {
+        "input": 3.0,
+        "cached": 0.3,
+        "output": 15.0,
+        "strengths": [
+          "hard-reasoning",
+          "long-context",
+          "deep-codegen",
+          "planning"
+        ]
+      },
+      "vercel/deepseek/deepseek-v4.1-flash": {
+        "input": 0.15,
+        "cached": 0.003,
+        "output": 0.6,
+        "strengths": [
+          "bulk-extraction",
+          "classification",
+          "summaries",
+          "subagent-background"
+        ]
+      }
     }
   },
   "free_tier": {
     "models": {
-      "opencode/beam-free": { "input": 0, "output": 0, "strengths": ["general", "chat", "scout"] },
-      "opencode/minimax-m3.1-flash-free": { "input": 0, "output": 0, "strengths": ["fast-general", "bulk"] },
-      "opencode/deepseek-v4.1-flash-free": { "input": 0, "output": 0, "strengths": ["code-review", "free-coding"] },
-      "opencode/mimo-v2.6-flash-free": { "input": 0, "output": 0, "strengths": ["quick", "scout"] },
-      "opencode/nemotron-3.5-super-vl-free": { "input": 0, "output": 0, "strengths": ["vision", "multimodal"] }
+      "opencode/beam-free": {
+        "input": 0,
+        "output": 0,
+        "strengths": [
+          "general",
+          "chat",
+          "scout"
+        ]
+      },
+      "opencode/minimax-m3.1-flash-free": {
+        "input": 0,
+        "output": 0,
+        "strengths": [
+          "fast-general",
+          "bulk"
+        ]
+      },
+      "opencode/deepseek-v4.1-flash-free": {
+        "input": 0,
+        "output": 0,
+        "strengths": [
+          "code-review",
+          "free-coding"
+        ]
+      },
+      "opencode/mimo-v2.6-flash-free": {
+        "input": 0,
+        "output": 0,
+        "strengths": [
+          "quick",
+          "scout"
+        ]
+      },
+      "opencode/nemotron-3.5-super-vl-free": {
+        "input": 0,
+        "output": 0,
+        "strengths": [
+          "vision",
+          "multimodal"
+        ]
+      }
     },
     "note": "omniroute local proxy (127.0.0.1:20128) is dead; omniroute models removed 2026-10-21 until the proxy is revived."
   },
   "task_classes": {
-    "scout":      { "description": "Fast exploration, file search, codebase mapping", "primary": "opencode/mimo-v2.6-flash-free", "variant": null, "fallbacks": ["opencode/beam-free", "opencode/minimax-m3.1-flash-free"], "cost_ceiling_usd": 0, "zdr_required": false },
-    "review":     { "description": "Code review, lint, style, best-practice", "primary": "opencode/deepseek-v4.1-flash-free", "variant": "medium", "fallbacks": ["opencode/beam-free", "opencode/minimax-m3.1-flash-free"], "cost_ceiling_usd": 0, "zdr_required": false },
-    "bulk":       { "description": "High-volume extraction, classification, summaries", "primary": "vercel/deepseek/deepseek-v4.1-flash", "variant": null, "fallbacks": ["vercel/zai/glm-5.3", "opencode/deepseek-v4.1-flash-free", "opencode/minimax-m3.1-flash-free"], "cost_ceiling_usd": 0.05, "zdr_required": true },
-    "code":       { "description": "Everyday coding, edits, refactoring, docs", "primary": "vercel/zai/glm-5.3", "variant": "medium", "fallbacks": ["vercel/deepseek/deepseek-v4.1-flash", "opencode/deepseek-v4.1-flash-free", "opencode/beam-free"], "cost_ceiling_usd": 0.50, "zdr_required": true },
-    "hard-reasoning": { "description": "Complex multi-step reasoning, deep codegen, planning", "primary": "vercel/moonshotai/kimi-k3", "variant": "high", "fallbacks": ["vercel/zai/glm-5.3", "opencode/beam-free"], "cost_ceiling_usd": 2.00, "zdr_required": true },
-    "vision":     { "description": "Image/video/multimodal analysis", "primary": "opencode/nemotron-3.5-super-vl-free", "variant": null, "fallbacks": ["opencode/beam-free"], "cost_ceiling_usd": 0, "zdr_required": false },
-    "ultrabrain": { "description": "Hardest tasks, max reasoning", "primary": "vercel/moonshotai/kimi-k3", "variant": "max", "fallbacks": ["vercel/zai/glm-5.3"], "cost_ceiling_usd": 5.00, "zdr_required": true }
+    "scout": {
+      "description": "Fast exploration, file search, codebase mapping",
+      "primary": "opencode/mimo-v2.6-flash-free",
+      "variant": null,
+      "fallbacks": [
+        "opencode/beam-free",
+        "opencode/minimax-m3.1-flash-free"
+      ],
+      "cost_ceiling_usd": 0,
+      "zdr_required": false
+    },
+    "review": {
+      "description": "Code review, lint, style, best-practice",
+      "primary": "opencode/deepseek-v4.1-flash-free",
+      "variant": "medium",
+      "fallbacks": [
+        "opencode/beam-free",
+        "opencode/minimax-m3.1-flash-free"
+      ],
+      "cost_ceiling_usd": 0,
+      "zdr_required": false
+    },
+    "bulk": {
+      "description": "High-volume extraction, classification, summaries",
+      "primary": "vercel/deepseek/deepseek-v4.1-flash",
+      "variant": null,
+      "fallbacks": [
+        "vercel/zai/glm-5.3",
+        "opencode/deepseek-v4.1-flash-free",
+        "opencode/minimax-m3.1-flash-free"
+      ],
+      "cost_ceiling_usd": 0.05,
+      "zdr_required": true
+    },
+    "code": {
+      "description": "Everyday coding, edits, refactoring, docs",
+      "primary": "vercel/zai/glm-5.3",
+      "variant": "medium",
+      "fallbacks": [
+        "vercel/deepseek/deepseek-v4.1-flash",
+        "opencode/deepseek-v4.1-flash-free",
+        "opencode/beam-free"
+      ],
+      "cost_ceiling_usd": 0.5,
+      "zdr_required": true
+    },
+    "hard-reasoning": {
+      "description": "Complex multi-step reasoning, deep codegen, planning",
+      "primary": "vercel/moonshotai/kimi-k3",
+      "variant": "high",
+      "fallbacks": [
+        "vercel/zai/glm-5.3",
+        "opencode/beam-free"
+      ],
+      "cost_ceiling_usd": 2.0,
+      "zdr_required": true
+    },
+    "vision": {
+      "description": "Image/video/multimodal analysis",
+      "primary": "opencode/nemotron-3.5-super-vl-free",
+      "variant": null,
+      "fallbacks": [
+        "opencode/beam-free"
+      ],
+      "cost_ceiling_usd": 0,
+      "zdr_required": false
+    },
+    "ultrabrain": {
+      "description": "Hardest tasks, max reasoning",
+      "primary": "vercel/moonshotai/kimi-k3",
+      "variant": "max",
+      "fallbacks": [
+        "vercel/zai/glm-5.3"
+      ],
+      "cost_ceiling_usd": 5.0,
+      "zdr_required": true
+    },
+    "content": {
+      "description": "Customer-facing writing: blog posts, landing copy, SEO, newsletters, social captions",
+      "primary": "vercel/deepseek/deepseek-v4.1-flash",
+      "variant": null,
+      "fallbacks": [
+        "vercel/zai/glm-5.3",
+        "opencode/deepseek-v4.1-flash-free",
+        "opencode/minimax-m3.1-flash-free"
+      ],
+      "cost_ceiling_usd": 0.05,
+      "zdr_required": true
+    }
   },
   "routing_rules": [
     "Default to free tier unless task requires quality or ZDR.",
-    "Token Pass models only for classes: bulk, code, hard-reasoning, ultrabrain.",
+    "Token Pass models only for classes: bulk, code, hard-reasoning, ultrabrain, content (customer-facing copy — quality + ZDR).",
     "Never use Token Pass for scout/review/vision (free alternatives exist).",
     "Subagent background slots MUST be free or bulk (DS flash) — never GLM/Kimi (cost + 403 risk on non-featured).",
     "Fallback chain walks on any error or empty response.",
@@ -50,7 +204,18 @@
   "receipts": {
     "root": "receipts",
     "format": "jsonl",
-    "fields": ["ts", "task_class", "primary", "used", "fallback_used", "cost_usd", "latency_ms", "success", "provider", "machine"],
+    "fields": [
+      "ts",
+      "task_class",
+      "primary",
+      "used",
+      "fallback_used",
+      "cost_usd",
+      "latency_ms",
+      "success",
+      "provider",
+      "machine"
+    ],
     "opencode_receipts": {
       "path": "receipts/opencode.jsonl",
       "source": "oms/opencode-plugin (x-event auto-capture)",
@@ -60,7 +225,20 @@
     }
   },
   "eval_battery": {
-    "tasks": ["math", "puzzle", "instruction", "code", "extraction", "json-format", "date-arithmetic", "regex", "counter", "unit-chain", "table-filter", "html-design"],
+    "tasks": [
+      "math",
+      "puzzle",
+      "instruction",
+      "code",
+      "extraction",
+      "json-format",
+      "date-arithmetic",
+      "regex",
+      "counter",
+      "unit-chain",
+      "table-filter",
+      "html-design"
+    ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
     "nightly_cron": "starlight-nightly-eval (daily 03:30, deepseek-v4.1-flash) writes fleet/evals/eval_results.jsonl",
@@ -72,5 +250,11 @@
     "action": "Parse receipts + token-tracker reports; compute per-class success rate + cost; write fleet/routing-proposals/YYYY-MM-DD.json for human approval. Never auto-commit.",
     "min_samples_per_class": 20
   },
-  "_migrations": ["v5-starlight-sovereign-harness-2026-10-21"]
+  "_migrations": [
+    "v5-starlight-sovereign-harness-2026-10-21",
+    {
+      "ts": "2026-10-23",
+      "change": "added task_classes.content (Phase-2 FrankX wire-up, ladder phase 2; mirrors bulk chain, ZDR, $0.05 cap)"
+    }
+  ]
 }
