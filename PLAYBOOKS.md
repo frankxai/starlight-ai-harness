@@ -52,3 +52,15 @@ it be verified. Repo-local design rules always win over generic instincts.
 2. Keep watchdogs on: `python fleet/credit_watchdog.py` hourly on spend.
 3. The nightly orchestrator skips free OpenCode rails under a RAM floor -
    unattended runs must never baseline against a thrashing machine.
+
+## 4. Grade a build with an OmO bar (SUCCESS.md)
+
+1. Write the bar in the working repo: checkbox criteria, each with
+   `owner:` and `verified:` tags, optionally `check:<battery-task>`
+   when a battery checker grades the artifact.
+2. `python fleet/omo_bridge.py grade SUCCESS.md` - verdicts:
+   PASS / CLAIMED (verifier missing or equals owner) / FAIL / MAPPED
+   (checker name is not in the battery).
+3. Exit code 1 means the bar is not met - loop with the verifier until
+   green. The bridge is the machine half; the verifier is always a
+   different actor than the author.

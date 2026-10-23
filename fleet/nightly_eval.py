@@ -8,6 +8,7 @@ Order (each step logs one line):
      (control-only doctrine: never let an unattended battery push the
      machine down; skip line is recorded, nothing fails)
   4. cross_harness report regenerate
+  5. page refresh (dashboard / showcase / status / estate plan), best-effort
 
 Wire (GATE: mutation of a registered scheduled task, one command):
   schtasks /change /tn "starlight-nightly-eval" /st 03:30
@@ -74,8 +75,16 @@ def main() -> None:
         print(f"[nightly] opencode rail SKIP: {ram / 2**30:.2f} GiB < 4 GiB "
               "free RAM (control-only)")
 
-    # 4. comparison report
+    # 4. comparison report, then refresh the self-grading pages (best-effort:
+    # a page builder failure never fails the run's measurement path)
     run(["fleet/cross_harness.py"], "cross-harness report")
+    for builder, label in (
+        (["fleet/report_dashboard.py"], "dashboard page"),
+        (["fleet/build_showcase.py"], "showcase page"),
+        (["fleet/build_statuspage.py"], "status page"),
+        (["fleet/build_planpage.py"], "estate plan page"),
+    ):
+        run(builder, label)  # exit codes logged; nightly outcome is report + rows
 
 
 if __name__ == "__main__":

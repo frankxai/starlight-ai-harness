@@ -68,6 +68,10 @@
     {
       "path": "oms/verify.py",
       "role": "package release gate (files, schema-battery parity, selftest, route smoke, config sync)"
+    },
+    {
+      "path": "fleet/omo_bridge.py",
+      "role": "OmO SUCCESS.md bar -> graded harness rows (owner != verifier enforced, check names must resolve to real battery checkers)"
     }
   ],
   "entry_commands": [

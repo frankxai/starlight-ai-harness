@@ -20,6 +20,9 @@ assets that drive it.
 - **gen_omo_config.py** - generate the OpenCode plugin config from the schema
 - **credit_watchdog.py / night_cap_check.py** - spend guardrails
 - **weekly_routing_review.py** - receipts -> routing diff proposals
+- **omo_bridge.py** - machine-grade an OmO `SUCCESS.md` bar: every criterion
+  needs an author check plus a verifier distinct from the owner; `check:`
+  tags must resolve to real battery checkers (`selftest` included)
 - **oms/opencode-plugin/** - auto-captures one receipt per agent-loop model
   step (model, tokens, cost, latency, finish) via OpenCode events
 - **oms/verify.py** - package release gate: run before trusting the install
