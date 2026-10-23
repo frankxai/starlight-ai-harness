@@ -1,0 +1,26 @@
+# Verify the battery's own checkers pass in a clean clone.
+# No keys, no ledger, nothing machine-specific — a fork must pass this
+# before its agent loops are trusted. Runs on hosted runners (16 GiB),
+# which is the capacity rail described in SANITIZATION.md / ADR docs.
+name: battery-selftest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 03:30 UTC nightly — same window the orchestrator uses locally
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run battery selftest (12 checkers + slop rejection)
+        run: python fleet/harness_eval.py selftest
