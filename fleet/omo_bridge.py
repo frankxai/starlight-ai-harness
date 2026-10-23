@@ -91,7 +91,9 @@ def grade_bar(path_or_text):
 
 
 def write_report(path, repo, rows):
-    outp = FLEET / "reports" / f"omo_{Path(path).stem}.json"
+    # repo dir + stem in the name so two repos' SUCCESS.md bars can't
+    # overwrite each other's graded reports
+    outp = FLEET / "reports" / f"omo_{repo}_{Path(path).stem}.json"
     outp.parent.mkdir(exist_ok=True)
     outp.write_text(json.dumps({"repo": repo, "graded_at": rows[0]["ts"] if rows else None, "rows": rows},
                                indent=2), encoding="utf-8")
