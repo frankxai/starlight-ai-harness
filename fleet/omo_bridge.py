@@ -37,30 +37,42 @@ CHECKERS = set(TASKS)
 
 
 def parse_bar(text):
-    """Return list of criterion dicts from SUCCESS.md markdown."""
-    out = []
+    """Return list of criterion dicts from SUCCESS.md markdown.
+
+    A criterion is its checkbox line plus the wrapped continuation lines
+    that follow it (until the next checkbox): owner/verifier/check tags
+    may sit on either."""
+    blocks = []
+    crit = None
     for lineno, raw in enumerate(text.splitlines(), 1):
         m = re.match(r"\s*-\s*\[( |x|X)\]\s*(.*)$", raw)
-        if not m:
+        if m:
+            crit = {"line": lineno, "checked": m.group(1).lower() == "x",
+                    "raw": raw, "body": m.group(2)}
+            blocks.append(crit)
             continue
-        checked = m.group(1).lower() == "x"
-        body = m.group(2)
-        crit = {
-            "line": lineno,
-            "checked": checked,
-            "text": body,
+        if crit and raw.strip() and not re.match(r"\s*#", raw):
+            crit["body"] += " " + raw.strip()
+    out = []
+    tag_words = r"(owner|verifier|verified|verify|check)"
+    for crit in blocks:
+        tags = re.findall(tag_words + r"\s*:\s*([A-Za-z0-9_./-]+)", crit["body"])
+        d = {
+            "line": crit["line"],
+            "checked": crit["checked"],
+            "text": re.sub(r"\s*[-—]\s*" + tag_words + r":\S+", "", crit["raw"]).strip(" -—"),
             "owner": None,
             "verifier": None,
             "check": None,
         }
-        # inline tags: owner:, verifier:, check: (dashes/em-dashes allowed)
-        tags = re.findall(r"(owner|verifier|verified|verify|check)\s*:\s*([A-Za-z0-9_./-]+)", body)
+        # first checkbox line without trailing wrap keeps its own readable text
+        first_text = re.sub(r"\s*[-—]\s*" + tag_words + r":\S+", "", crit["body"]).strip(" -—")
+        d["text"] = first_text if first_text else d["text"]
         for key, val in tags:
             if key in ("verified", "verify"):
                 key = "verifier"
-            crit[key] = val
-        crit["text"] = re.sub(r"\s*[-—]\s*(owner|verifier|verified|verify|check):\S+", "", body).strip(" -—")
-        out.append(crit)
+            d[key] = val
+        out.append(d)
     return out
 
 def grade(crit):
@@ -130,14 +142,18 @@ def cmd_grade(args):
 
 
 def cmd_selftest(_):
-    good = ("## bar\n"
+    ok = ("## bar\n"
             "- [x] pages render — owner: build, verified: claude, check: html-design\n"
             "- [x] battery green — owner: build, verify: codex\n"
             "- [x] claimed only — owner: build\n"
             "- [ ] not done — owner: build, verified: claude\n"
             "- [x] bad checker — owner: build, verified: claude, check: nonexistent-gate\n")
-    rows = grade_bar(good)
-    grades = [r["grade"] for r in rows]
+    wrapped = ("- [x] multi-line criterion with tags on the wrapped line coords\n"
+               "  because bars wrap — owner: build, verified: codex, check: regex\n")
+    combo = grade_bar(wrapped)
+    assert combo[0]["grade"] == "PASS" and combo[0]["check"] == "regex", combo
+    ok_rows = grade_bar(ok)
+    grades = [r["grade"] for r in ok_rows]
     expect = ["PASS", "PASS", "CLAIMED", "FAIL", "MAPPED"]
     assert grades == expect, (grades, expect)
     # owner == verifier must CLAIM
