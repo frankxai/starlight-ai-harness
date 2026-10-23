@@ -64,3 +64,16 @@ it be verified. Repo-local design rules always win over generic instincts.
 3. Exit code 1 means the bar is not met - loop with the verifier until
    green. The bridge is the machine half; the verifier is always a
    different actor than the author.
+
+## 5. Routed content work (customer-facing writing)
+
+1. `python fleet/route_task.py "write a blog post about <x>"` - the
+   classifier's `content` class fast-path catches blog/landing/SEO/
+   newsletter/social asks and returns the content chain: DS-flash
+   primary (measured best $/pass), gateway fallbacks before free rails,
+   ZDR + $0.05 ceiling (customer-facing copy is retention-sensitive).
+2. Grade every draft like code: battery selftest + the machine-gradeable
+   claims (numbers verified, links real, schema references true).
+3. Receipts make content work countable - the same honesty plane as
+   pulls and deploys: if the lane didn't produce a route receipt, it
+   didn't route.
