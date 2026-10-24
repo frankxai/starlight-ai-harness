@@ -20,7 +20,7 @@ sys.path.insert(0, str(HERE))
 
 from harness_eval import load_results  # noqa: E402
 
-RECEIPTS = HERE / "receipts" / "opencode.jsonl"
+RECEIPTS_DIR = HERE / "receipts"  # all adapter ledgers count (opencode + adapters)
 REPORTS = HERE / "reports"
 
 
@@ -59,43 +59,49 @@ def _agg_battery(rows: list[dict]) -> list[dict]:
 
 
 def _agg_receipts() -> list[dict]:
-    if not RECEIPTS.exists():
-        return []
-    agg = defaultdict(lambda: {"msgs": 0, "cost": 0.0, "latencies": [],
-                               "in": 0, "cache_read": 0, "reasoning": 0,
-                               "finish": defaultdict(int)})
-    for line in RECEIPTS.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
+    # every receipts ledger counts: opencode.jsonl (plugin) plus any
+    # adapter ledger (claude-code.jsonl, ...) writing the same row shape.
+    # Rows carry source (opencode-plugin / claude-code-hook / ...).
+    sources: dict = {}
+    for ledger in sorted(RECEIPTS_DIR.glob("*.jsonl")):
+        if ledger.name == "opencode_events_raw.jsonl":
             continue
-        r = json.loads(line)
-        if r.get("source") != "opencode-plugin":
-            continue
-        m = r.get("modelID") or "?"
-        a = agg[m]
-        a["msgs"] += 1
-        a["cost"] += r.get("cost_usd") or 0.0
-        a["finish"][r.get("finish", "?")] += 1
-        if r.get("latency_ms"):
-            a["latencies"].append(r["latency_ms"])
-        t = r.get("tokens", {}) or {}
-        a["in"] += t.get("input", 0)
-        a["cache_read"] += t.get("cache_read", 0)
-        a["reasoning"] += t.get("reasoning", 0)
-    return [
-        {
-            "modelID": m,
-            "msgs": a["msgs"],
-            "total_cost_usd": round(a["cost"], 6),
-            "mean_cost_per_msg_usd": round(a["cost"] / a["msgs"], 6),
-            "agg_latency_ms": int(sum(a["latencies"])),
-            "mean_latency_ms": int(sum(a["latencies"]) / len(a["latencies"])) if a["latencies"] else None,
-            "mean_input_tokens": a["in"] // a["msgs"],
-            "mean_cache_read_tokens": a["cache_read"] // a["msgs"],
-            "mean_reasoning_tokens": a["reasoning"] // a["msgs"],
-            "finish": dict(sorted(a["finish"].items())),
-        }
-        for m, a in sorted(agg.items())
-    ]
+        for line in ledger.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            src = r.get("source") or "opencode-plugin"
+            m = r.get("modelID") or "?"
+            models = sources.setdefault(src, {})
+            a = models.setdefault(m, {"msgs": 0, "cost": 0.0, "latencies": [],
+                                      "in": 0, "cache_read": 0, "reasoning": 0,
+                                      "finish": defaultdict(int)})
+            a["msgs"] += 1
+            a["cost"] += r.get("cost_usd") or 0.0
+            a["finish"][r.get("finish", "?")] += 1
+            if r.get("latency_ms"):
+                a["latencies"].append(r["latency_ms"])
+            t = r.get("tokens", {}) or {}
+            a["in"] += t.get("input", 0)
+            a["cache_read"] += t.get("cache_read", 0)
+            a["reasoning"] += t.get("reasoning", 0)
+    out = []
+    for src in sorted(sources):
+        for m, a in sorted(sources[src].items()):
+            out.append({
+                "source": src,
+                "modelID": m,
+                "msgs": a["msgs"],
+                "total_cost_usd": round(a["cost"], 6),
+                "mean_cost_per_msg_usd": round(a["cost"] / a["msgs"], 6),
+                "agg_latency_ms": int(sum(a["latencies"])),
+                "mean_latency_ms": int(sum(a["latencies"]) / len(a["latencies"])) if a["latencies"] else None,
+                "mean_input_tokens": a["in"] // a["msgs"],
+                "mean_cache_read_tokens": a["cache_read"] // a["msgs"],
+                "mean_reasoning_tokens": a["reasoning"] // a["msgs"],
+                "finish": dict(sorted(a["finish"].items())),
+            })
+    return out
 
 
 def _canonical(model: str) -> str:
@@ -108,7 +114,7 @@ def _shared(battery: list[dict], receipts: list[dict]) -> list[dict]:
     for b in battery:
         rails[_canonical(b["model"])].add(f"battery:{b['harness']}")
     for r in receipts:
-        rails[_canonical(r["modelID"])].add("receipts:opencode-plugin")
+        rails[_canonical(r["modelID"])].add(f"receipts:{r.get('source', 'opencode-plugin')}")
     return sorted(
         ({"model": m, "rails": sorted(rs)} for m, rs in rails.items() if len(rs) > 1),
         key=lambda s: s["model"],

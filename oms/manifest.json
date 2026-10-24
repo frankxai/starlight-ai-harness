@@ -80,6 +80,22 @@
     {
       "path": "fleet/adapters/claude-code/README.md",
       "role": "adapter wiring doc (settings.json snippet - GATE: human button)"
+    },
+    {
+      "path": "fleet/adapters/codex/hook_receipt.py",
+      "role": "codex notify-hook receipt adapter - one metadata-only row per turn, same shape as other adapters"
+    },
+    {
+      "path": "fleet/adapters/codex/README.md",
+      "role": "adapter wiring doc (config.toml notify - GATE: human button)"
+    },
+    {
+      "path": "fleet/adapters/grok/hook_receipt.py",
+      "role": "grok session-stop rule-hook receipt adapter - one metadata-only row per session"
+    },
+    {
+      "path": "fleet/adapters/grok/README.md",
+      "role": "adapter wiring doc (~/.grok hooks - GATE: human button)"
     }
   ],
   "entry_commands": [
