@@ -29,7 +29,7 @@ auto-edited by agents):
           "hooks": [
             {
               "type": "command",
-              "command": "C:/Python313/python.exe C:/Users/frank/agentic-ops/fleet/adapters/claude-code/hook_receipt.py"
+              "command": "<python> <repo>/fleet/adapters/claude-code/hook_receipt.py"
             }
           ]
         }
