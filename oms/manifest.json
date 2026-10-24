@@ -72,6 +72,14 @@
     {
       "path": "fleet/omo_bridge.py",
       "role": "OmO SUCCESS.md bar -> graded harness rows (owner != verifier enforced, check names must resolve to real battery checkers)"
+    },
+    {
+      "path": "fleet/adapters/claude-code/hook_receipt.py",
+      "role": "claude-code receipt adapter (Stop hook) - one metadata-only row per session, same shape as opencode plugin"
+    },
+    {
+      "path": "fleet/adapters/claude-code/README.md",
+      "role": "adapter wiring doc (settings.json snippet - GATE: human button)"
     }
   ],
   "entry_commands": [

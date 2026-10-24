@@ -1,7 +1,7 @@
 {
   "$schema": "https://starlight.ai/schemas/routing.v5.json",
   "version": 5,
-  "updated": "2026-10-23",
+  "updated": "2026-10-24",
   "night_cap_usd": 40,
   "night_cap_usd_note": "Nightly unattended spend cap across ALL models (Grok/Codex/etc). Separate from token_pass.hard_cap_usd (monthly $80 Token Pass credit).",
   "primary_model": "vercel/zai/glm-5.3",
@@ -237,7 +237,8 @@
       "counter",
       "unit-chain",
       "table-filter",
-      "html-design"
+      "html-design",
+      "task-graph"
     ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
@@ -255,6 +256,10 @@
     {
       "ts": "2026-10-23",
       "change": "added task_classes.content (Phase-2 FrankX wire-up, ladder phase 2; mirrors bulk chain, ZDR, $0.05 cap)"
+    },
+    {
+      "ts": "2026-10-24",
+      "change": "battery v3 seed: task-graph task (multi-step dependency reasoning, deterministic topological checker, accepts any valid order)"
     }
   ]
 }

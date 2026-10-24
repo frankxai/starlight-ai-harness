@@ -153,6 +153,30 @@ def _check_html(text: str) -> bool:
             and p.img_bare == 0 and p.label_for >= 1 and p.action_tag > 0)
 
 
+# deps for the task-graph probe: job -> jobs that must run before it
+_GRAPH_DEPS = {"A": [], "B": ["A"], "C": ["A", "B"], "D": ["C"], "E": ["B"]}
+
+
+def _check_task_graph(text: str) -> bool:
+    """Multi-step dependency reasoning: accept ANY topological order of the
+    five jobs, reject cycles, missing or duplicate jobs. Deterministic."""
+    try:
+        order = _last_json_block(text)["order"]
+    except Exception:
+        m = re.search(r"\[[^\[\]]*\]", text.replace("'", '"'))
+        if not m:
+            return False
+        try:
+            order = json.loads(m.group(0))
+        except Exception:
+            return False
+    if (not isinstance(order, list) or len(order) != 5
+            or sorted(order) != ["A", "B", "C", "D", "E"]):
+        return False
+    pos = {job: i for i, job in enumerate(order)}
+    return all(pos[d] < pos[j] for j, deps in _GRAPH_DEPS.items() for d in deps)
+
+
 # ---------------- battery ----------------
 
 TASKS = {
@@ -245,6 +269,16 @@ TASKS = {
                    "nothing else."),
         "truth": "doctype+lang+viewport+alt+label-for+button",
         "check": _check_html,
+    },
+    "task-graph": {
+        "prompt": ("A build pipeline has five jobs with dependencies: job A has no "
+                   "dependencies; job B depends on A; job C depends on A and B; "
+                   "job D depends on C; job E depends on B. Every dependency must "
+                   "finish before the job that needs it starts. Reply with only a "
+                   "JSON object of the form {\"order\": [\"X\", ...]} listing ALL "
+                   "five jobs in one valid execution order. Nothing else."),
+        "truth": "any topological order of A,B,C,D,E respecting deps",
+        "check": _check_task_graph,
     },
 }
 
@@ -397,11 +431,14 @@ def cmd_selftest(args):
                         '<img src="hero.png" alt="Dashboard overview">'
                         '<label for="q">Search</label><input id="q">'
                         '<button>Go</button></body></html>'),
+        "task-graph": '{"order": ["A", "B", "E", "C", "D"]}',
     }
     fails = []
     for task, spec in TASKS.items():
         want = canned.get(task)
-        if want is None:  # e.g. code: checked separately below
+        if want is None:  # code: checked separately below
+            if task != "code":
+                fails.append(f"{task}/no-ground-truth")
             continue
         if not bool(spec["check"](want)):
             fails.append(task)
@@ -412,6 +449,8 @@ def cmd_selftest(args):
                  '<label>Search</label><button>Go</button></body></html>')
     if _check_html(_neg_html):
         fails.append("html-design/accepts-slop(no-lang-viewport-alt)")
+    if _check_task_graph('{"order": ["C", "A", "B", "D", "E"]}'):
+        fails.append("task-graph/accepts-cycle(C-before-A)")
 
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:
@@ -419,7 +458,7 @@ def cmd_selftest(args):
     if fails:
         print(f"SELFTEST FAIL: {fails}")
         raise SystemExit(1)
-    print("selftest OK: all 12 checkers pass ground truth, "
+    print(f"selftest OK: all {len(TASKS)} checkers pass ground truth, "
           "html-design rejects slop")
 
 
