@@ -1,7 +1,7 @@
 {
   "$schema": "https://starlight.ai/schemas/routing.v5.json",
   "version": 5,
-  "updated": "2026-10-24",
+  "updated": "2026-10-25",
   "night_cap_usd": 40,
   "night_cap_usd_note": "Nightly unattended spend cap across ALL models (Grok/Codex/etc). Separate from token_pass.hard_cap_usd (monthly $80 Token Pass credit).",
   "primary_model": "vercel/zai/glm-5.3",
@@ -138,10 +138,10 @@
     },
     "code": {
       "description": "Everyday coding, edits, refactoring, docs",
-      "primary": "vercel/zai/glm-5.3",
-      "variant": "medium",
+      "primary": "vercel/deepseek/deepseek-v4.1-flash",
+      "variant": null,
       "fallbacks": [
-        "vercel/deepseek/deepseek-v4.1-flash",
+        "vercel/zai/glm-5.3",
         "opencode/deepseek-v4.1-flash-free",
         "opencode/beam-free"
       ],
@@ -260,6 +260,10 @@
     {
       "ts": "2026-10-24",
       "change": "battery v3 seed: task-graph task (multi-step dependency reasoning, deterministic topological checker, accepts any valid order)"
+    },
+    {
+      "ts": "2026-10-25",
+      "change": "code-class primary glm-5.3 -> DS-flash per weekly review 2026-10-25 + battery (98.2% vs 91.3%, 11.7x cheaper); glm-5.3 demoted to first fallback (proposal 2026-10-25-code-class-primary.md.json, approved by Frank)"
     }
   ]
 }
