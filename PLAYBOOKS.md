@@ -33,7 +33,7 @@ it be verified. Repo-local design rules always win over generic instincts.
 
 ## 2. Measure a model before trusting it on real work
 
-1. `python fleet/harness_eval.py run-gateway --model <model>` (full 12-task
+1. `python fleet/harness_eval.py run-gateway --model <model>` (full 13-task
    battery, priced rows via schema token pricing)
 2. `python fleet/cross_harness.py` - compare $/pass and the fail matrix
    against every recorded rail
