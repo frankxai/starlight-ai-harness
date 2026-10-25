@@ -238,7 +238,8 @@
       "unit-chain",
       "table-filter",
       "html-design",
-      "task-graph"
+      "task-graph",
+      "debug-repair"
     ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
@@ -264,6 +265,10 @@
     {
       "ts": "2026-10-25",
       "change": "code-class primary glm-5.3 -> DS-flash per weekly review 2026-10-25 + battery (98.2% vs 91.3%, 11.7x cheaper); glm-5.3 demoted to first fallback (proposal 2026-10-25-code-class-primary.md.json, approved by Frank)"
+    },
+    {
+      "ts": "2026-10-25",
+      "change": "battery v3 agentic wave task 2: debug-repair (broken code + failing assert suite; checker runs the suite; buggy original must fail)"
     }
   ]
 }

@@ -177,6 +177,34 @@ def _check_task_graph(text: str) -> bool:
     return all(pos[d] < pos[j] for j, deps in _GRAPH_DEPS.items() for d in deps)
 
 
+# failing-assert suite for the debug-repair probe: the model must return a
+# merge_ranges that passes ALL of these (grading = running the suite)
+_REPAIR_SUITE = (
+    "assert merge_ranges([[1,3],[2,6],[8,10]]) == [[1,6],[8,10]]",
+    "assert merge_ranges([[5,7]]) == [[5,7]]",
+    "assert merge_ranges([[1,2],[2,3]]) == [[1,3]]",
+    "assert merge_ranges([]) == []",
+)
+
+
+def _check_debug_repair(text: str) -> bool:
+    """Debug-repair probe: exec the returned merge_ranges and run the real
+    failing-assert suite. The buggy sort-only original must FAIL here."""
+    m = re.search(r"def\s+merge_ranges", text)
+    if not m:
+        return False
+    snippet = "def merge_ranges" + text[m.end():]
+    env: dict = {}
+    try:
+        exec(snippet, env)
+        merge = env["merge_ranges"]
+        for case in _REPAIR_SUITE:
+            exec(case, {}, {"merge_ranges": merge})
+        return True
+    except Exception:
+        return False
+
+
 # ---------------- battery ----------------
 
 TASKS = {
@@ -279,6 +307,21 @@ TASKS = {
                    "five jobs in one valid execution order. Nothing else."),
         "truth": "any topological order of A,B,C,D,E respecting deps",
         "check": _check_task_graph,
+    },
+    "debug-repair": {
+        "prompt": ("This function should merge overlapping integer ranges and return "
+                   "them sorted, but it is broken:\n"
+                   "def merge_ranges(ranges):\n"
+                   "    return sorted(ranges)\n"
+                   "Failing tests:\n"
+                   "assert merge_ranges([[1,3],[2,6],[8,10]]) == [[1,6],[8,10]]\n"
+                   "assert merge_ranges([[5,7]]) == [[5,7]]\n"
+                   "assert merge_ranges([[1,2],[2,3]]) == [[1,3]]\n"
+                   "assert merge_ranges([]) == []\n"
+                   "Return ONLY the fixed Python function (def merge_ranges...), "
+                   "no prose, no markdown."),
+        "truth": "def merge_ranges passing all four asserts",
+        "check": _check_debug_repair,
     },
 }
 
@@ -432,6 +475,15 @@ def cmd_selftest(args):
                         '<label for="q">Search</label><input id="q">'
                         '<button>Go</button></body></html>'),
         "task-graph": '{"order": ["A", "B", "E", "C", "D"]}',
+        "debug-repair": ("def merge_ranges(ranges):\n"
+                         "    ranges = sorted(ranges)\n"
+                         "    merged = []\n"
+                         "    for lo, hi in ranges:\n"
+                         "        if merged and lo <= merged[-1][1]:\n"
+                         "            merged[-1][1] = max(merged[-1][1], hi)\n"
+                         "        else:\n"
+                         "            merged.append([lo, hi])\n"
+                         "    return merged\n"),
     }
     fails = []
     for task, spec in TASKS.items():
@@ -451,6 +503,8 @@ def cmd_selftest(args):
         fails.append("html-design/accepts-slop(no-lang-viewport-alt)")
     if _check_task_graph('{"order": ["C", "A", "B", "D", "E"]}'):
         fails.append("task-graph/accepts-cycle(C-before-A)")
+    if _check_debug_repair("def merge_ranges(ranges):\n    return sorted(ranges)\n"):
+        fails.append("debug-repair/accepts-buggy-original(sort-only)")
 
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:
