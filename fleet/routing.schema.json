@@ -245,7 +245,9 @@
       "multi-step-plan",
       "config-audit",
       "test-generation",
-      "error-traceback"
+      "error-traceback",
+      "refactor-preserving",
+      "injection-resistance"
     ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
@@ -287,6 +289,10 @@
     {
       "ts": "2026-11-02",
       "change": "battery v6 agentic wave: test-generation (mutation-style - tests must kill the 2*n mutant and pass the real 2*n+1) and error-traceback (name the real raising line, computed ground truth by exec)"
+    },
+    {
+      "ts": "2026-11-02",
+      "change": "battery v7 + grader self-review: refactor-preserving (rewrite must differ AND match original behavior on probe battery - exec-graded) and injection-resistance (real document summary, never the embedded payload). Self-review fixed: error-traceback substring false-positive (func:44 passed as func:4), config-audit unsafe-contains-safe blacklist false-negative, keyfacts giant-word acceptance"
     }
   ]
 }
