@@ -205,7 +205,57 @@ def _check_debug_repair(text: str) -> bool:
         return False
 
 
-# ---------------- battery ----------------
+# structured function-call probe: the one documented tool for this request,
+# with typed args. Wrong tool, wrong arg names, or wrong value types FAIL.
+_TOOL_USE_DOC = (
+    "search_flights(origin: str, destination: str, date: str, "
+    "passengers: int, max_results: int) -> find bookable flights; "
+    "book_hotel(city: str, checkin: str, checkout: str, rooms: int) -> "
+    "reserve a hotel room; get_weather(city: str, date: str) -> forecast"
+)
+_FLIGHT_ARGS = {
+    "origin": "AMS", "destination": "LIS", "date": "2026-11-05",
+    "passengers": 2, "max_results": 3,
+}
+
+
+def _check_tool_use(text: str) -> bool:
+    call = None
+    try:
+        call = _last_json_block(text)
+    except Exception:
+        pass
+    if not isinstance(call, dict) or call.get("tool") != "search_flights":
+        return False
+    args = call.get("args")
+    if not isinstance(args, dict):
+        return False
+    for key, want in _FLIGHT_ARGS.items():
+        if key not in args:
+            return False
+        got = args[key]
+        if isinstance(want, int):
+            if got != want:
+                return False
+        elif got != want:
+            return False
+        if isinstance(want, int) is False and isinstance(got, (bool, float)):
+            return False
+    return True
+
+
+# instruction-following under a hard budget: a valid summary must include
+# every key fact, stay under the word limit, and reject vague fluff.
+_KEYFACTS = ("fancorp", "q3", "revenue", "14.2", "3%")
+_WORDLIMIT = 20
+
+
+def _check_keyfacts(text: str) -> bool:
+    words = text.strip().split()
+    if len(words) > _WORDLIMIT or len(words) == 0:
+        return False
+    low = text.lower()
+    return all(k in low for k in _KEYFACTS)
 
 TASKS = {
     "math": {
@@ -322,6 +372,29 @@ TASKS = {
                    "no prose, no markdown."),
         "truth": "def merge_ranges passing all four asserts",
         "check": _check_debug_repair,
+    },
+    "tool-use": {
+        "prompt": ("You may call exactly one tool. Available tools:\n"
+                   + _TOOL_USE_DOC + "\n"
+                   "A customer request: find bookable flights from Amsterdam "
+                   "(AMS) to Lisbon (LIS) departing on 5 November 2026, for 2 "
+                   "passengers, showing at most 3 results. Reply with ONLY a "
+                   "JSON object of the form {\"tool\": \"<name>\", \"args\": "
+                   "{<all required args with values>}}. Use YYYY-MM-DD dates. "
+                   "Nothing else."),
+        "truth": ("{\"tool\": \"search_flights\", \"args\": "
+                  "{\"origin\": \"AMS\", \"destination\": \"LIS\", "
+                  "\"date\": \"2026-11-05\", \"passengers\": 2, "
+                  "\"max_results\": 3}}"),
+        "check": _check_tool_use,
+    },
+    "keyfacts": {
+        "prompt": ("Facts: Fancorp reported Q3 revenue of 14.2 billion dollars, "
+                   "up 3% year over year. The head of product resigned and the "
+                   "stock fell 5% after hours. Summarize in at most 20 words, "
+                   "in English. Reply with only the summary."),
+        "truth": "all of: fancorp,q3,revenue,14.2,3%; <= 20 words",
+        "check": _check_keyfacts,
     },
 }
 
@@ -484,6 +557,11 @@ def cmd_selftest(args):
                          "        else:\n"
                          "            merged.append([lo, hi])\n"
                          "    return merged\n"),
+        "tool-use": ('{"tool": "search_flights", "args": {"origin": "AMS", '
+                     '"destination": "LIS", "date": "2026-11-05", '
+                     '"passengers": 2, "max_results": 3}}'),
+        "keyfacts": ("Fancorp Q3 revenue hit 14.2 billion dollars, up 3%; "
+                     "the head of product resigned and shares fell 5%."),
     }
     fails = []
     for task, spec in TASKS.items():
@@ -505,6 +583,21 @@ def cmd_selftest(args):
         fails.append("task-graph/accepts-cycle(C-before-A)")
     if _check_debug_repair("def merge_ranges(ranges):\n    return sorted(ranges)\n"):
         fails.append("debug-repair/accepts-buggy-original(sort-only)")
+    if _check_tool_use('{"tool": "book_hotel", "args": {"city": "Lisbon", '
+                       '"checkin": "2026-11-05", "checkout": "2026-11-06", '
+                       '"rooms": 2}}'):
+        fails.append("tool-use/accepts-wrong-tool(book_hotel)")
+    if _check_tool_use('{"tool": "search_flights", "args": {"origin": "AMS", '
+                       '"destination": "LIS", "date": "5 Nov 2026", '
+                       '"passengers": 2, "max_results": 3}}'):
+        fails.append("tool-use/accepts-unformatted-date")
+    if _check_keyfacts("Fancorp grew strongly this quarter and the market "
+                       "reacted afterwards."):
+        fails.append("keyfacts/accepts-missing-facts")
+    if _check_keyfacts("Fancorp Q3 revenue was 14.2 billion, up 3%; the head "
+                       "of product resigned and the stock fell by five percent "
+                       "in after hours trading."):
+        fails.append("keyfacts/accepts-over-word-limit")
 
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:

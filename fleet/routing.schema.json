@@ -1,7 +1,7 @@
 {
   "$schema": "https://starlight.ai/schemas/routing.v5.json",
   "version": 5,
-  "updated": "2026-10-25",
+  "updated": "2026-11-02",
   "night_cap_usd": 40,
   "night_cap_usd_note": "Nightly unattended spend cap across ALL models (Grok/Codex/etc). Separate from token_pass.hard_cap_usd (monthly $80 Token Pass credit).",
   "primary_model": "vercel/zai/glm-5.3",
@@ -239,7 +239,9 @@
       "table-filter",
       "html-design",
       "task-graph",
-      "debug-repair"
+      "debug-repair",
+      "tool-use",
+      "keyfacts"
     ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
@@ -269,6 +271,10 @@
     {
       "ts": "2026-10-25",
       "change": "battery v3 agentic wave task 2: debug-repair (broken code + failing assert suite; checker runs the suite; buggy original must fail)"
+    },
+    {
+      "ts": "2026-11-02",
+      "change": "battery v3 agentic wave 3+4: tool-use (one documented tool, typed args; wrong tool / unformatted date must fail) and keyfacts (summary <= 20 words incl. all key facts; missing facts / over limit must fail)"
     }
   ]
 }
