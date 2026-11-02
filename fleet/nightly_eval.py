@@ -10,6 +10,12 @@ Order (each step logs one line):
   4. cross_harness report regenerate
   5. page refresh (dashboard / showcase / status / estate plan), best-effort
 
+Usage: python nightly_eval.py          -> the full night (no argv = schtasks)
+       python nightly_eval.py prep     -> refresh checkout, refuse stale
+       python nightly_eval.py selftest -> stubbed rc-propagation checks
+Any other argument REFUSES (exit 2) - never a fall-through into a real
+unattended battery (the 2026-11-02 catch).
+
 Exit codes (schtasks Last Run Result): measurement steps (gateway battery,
 cross-harness report) are exit-fatal; a failing one exits 1. Content/cap
 refusals exit with their own codes (prep 2, gate rc). The free opencode
@@ -202,20 +208,40 @@ def selftest() -> int:
         fails.append("failing report must fail the night")
     if stub_night() != 0:
         fails.append("clean night must pass (rc=0)")
+    # argv contract: a typo-shaped invocation must REFUSE (exit 2), never
+    # fall through into an unattended real battery. Real subprocess; the
+    # child exits at the refusal before any step runs.
+    p = subprocess.run([sys.executable, __file__, "bogus-arg"],
+                       capture_output=True, text=True)
+    if p.returncode != 2:
+        fails.append(f"unknown argv must refuse with rc=2 "
+                     f"(got rc={p.returncode})")
+
     if fails:
         print("NIGHTLY SELFTEST FAIL: " + "; ".join(fails))
         return 1
-    print("nightly selftest OK: rc propagation holds on all 5 cases")
+    print("nightly selftest OK: rc propagation holds on all 5 cases; "
+          "unknown argv refuses")
     return 0
 
 
 def main() -> None:
-    if len(sys.argv) > 1 and sys.argv[1] == "prep":
+    # argv contract: NO argument (or "") = the full night (schtasks wire);
+    # "prep"/"selftest" = the standalone tools. Anything else REFUSES -
+    # exit 2, never a fall-through into an unattended real battery. The
+    # 2026-11-02 catch: `selftest` on pre-refusal code ran a REAL full
+    # night (gateway spend) from a typo-shaped invocation.
+    argv = sys.argv[1:]
+    if argv == [] or argv == [""]:
+        raise SystemExit(run_night())
+    if argv[0] == "prep":
         # standalone boot (also the selftest of the refresh step)
         raise SystemExit(prep())
-    if len(sys.argv) > 1 and sys.argv[1] == "selftest":
+    if argv[0] == "selftest":
         raise SystemExit(selftest())
-    raise SystemExit(run_night())
+    print(f"[nightly] refusing unknown argument(s) {argv!r} - "
+          "usage: nightly_eval.py [prep|selftest]", file=sys.stderr)
+    raise SystemExit(2)
 
 
 if __name__ == "__main__":
