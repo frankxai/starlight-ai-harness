@@ -71,11 +71,11 @@ def record_receipt(task_class: str, used: str, fallback_used: bool,
         raise ValueError(f"used model '{used}' is not in the chain for '{task_class}': {r['chain']}")
     if cost_usd < 0 or latency_ms < 0:
         raise ValueError("cost_usd and latency_ms must be non-negative")
-    ceiling = r["cost_ceiling_usd"]
-    if cost_usd > ceiling:
-        raise ValueError(
-            f"cost_usd {cost_usd} exceeds cost ceiling {ceiling} for '{task_class}'"
-        )
+    # Over-ceiling costs are RECORDED, never rejected: an over-spend is
+    # exactly the data the receipts exist to measure. Raising here would
+    # silently drop the honest number from the ledger and under-report
+    # in the weekly review.
+    over_ceiling = bool(cost_usd > r["cost_ceiling_usd"])
     RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
     machine = machine or os.environ.get("STARLIGHT_MACHINE", "unknown")
     receipt = {
@@ -86,6 +86,7 @@ def record_receipt(task_class: str, used: str, fallback_used: bool,
         "used": used,
         "fallback_used": fallback_used,
         "cost_usd": round(cost_usd, 6),
+        "cost_over_ceiling": over_ceiling,
         "latency_ms": latency_ms,
         "success": success,
         "provider": provider,

@@ -22,8 +22,11 @@ FAST_RULES = [
     ("bulk",          re.compile(r"\b(extract|classify|summarize (all|many|bulk)|batch|bulk|all files|every file)\b", re.I)),
     ("content",       re.compile(r"\b(blog|newsletter|landing (page|copy)|social (post|caption)|seo|meta description|title tag|marketing|launch announce|case stud(y|ies)|outreach (email|message)|copy for)\b", re.I)),
     ("review",        re.compile(r"\b(review|lint|audit|check|verify|best practice|style)\b", re.I)),
+    # code BEFORE scout: a task with a code verb ('implement a binary
+    # search tree') routes to code even though it also contains 'search';
+    # scout gets the pure-exploration phrasings left over.
+    ("code",          re.compile(r"\b(code|implement|refactor|edit|write|fix|add|change|update (the )?(file|function|module))\b", re.I)),
     ("scout",         re.compile(r"\b(find|search|locate|list|explore|scout|map (the )?codebase|where is)\b", re.I)),
-    ("code",          re.compile(r"\b(code|implement|refactor|edit|write|fix|add feature|change|update (the )?(file|function|module))\b", re.I)),
 ]
 
 LLM_PROMPT = """Classify the following task into exactly one of these classes:
@@ -82,7 +85,40 @@ def classify(task: str) -> dict:
     }
 
 
+def selftest() -> int:
+    """Classification table with known answers incl. the 2026-11-02
+    adversarial catches: round 1 ('binary search tree' is code work,
+    not exploration) and round 2 (my first fix's regression: pure
+    exploration phrasings must STAY scout - precedence, not grammar
+    enumeration, is the mechanism)."""
+    cases = [
+        # round-1 catch: technical nouns containing 'search' are code work
+        ("implement a binary search tree", "code"),
+        ("write a depth-first search function", "code"),
+        ("add search to the catalog endpoint", "code"),
+        # round-2 reviewer regression cases: pure exploration must stay scout
+        ("find auth middleware", "scout"),
+        ("find an entry point", "scout"),
+        ("search src for TODOs", "scout"),
+        ("search for the config loader", "scout"),
+        ("review this PR", "review"),
+        ("write a blog post about testing", "content"),
+        ("extract emails from all files", "bulk"),
+        ("analyze this screenshot", "vision"),
+        ("architect a design system from scratch", "ultrabrain"),
+    ]
+    bad = [(t, classify(t)["class"], want) for t, want in cases
+           if classify(t)["class"] != want]
+    if bad:
+        print(f"CLASSIFIER SELFTEST FAIL: {bad}")
+        return 1
+    print(f"classifier selftest OK: {len(cases)} cases (incl. search-tree negatives)")
+    return 0
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "selftest":
+        raise SystemExit(selftest())
     ap = argparse.ArgumentParser(description="Classify a task into a routing class.")
     ap.add_argument("task", nargs="+", help="Task description")
     ap.add_argument("--json", action="store_true", help="Output JSON")
