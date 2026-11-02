@@ -12,14 +12,14 @@ assets that drive it.
 - **route_task.py** - classify a task, produce the model chain, record receipts
 - **route_classifier.py / route_executor.py** - imported by the above
 - **gateway_call.py** - gateway caller with 403-catch fallback walking
-- **harness_eval.py** - 16-task battery (v3 agentic), deterministic checkers only
+- **harness_eval.py** - 18-task battery (v5 agentic+memory), deterministic checkers only
   (no LLM judging), `selftest`, `run-gateway`, `report`
 - **report_dashboard.py** - self-contained styled HTML dashboard from the
   cross-harness report (`--check` self-grades the rendered surface)
 - **PLAYBOOKS.md** - build-and-grade / measure-a-model / nightly-loop recipes
 - **gen_omo_config.py** - generate the OpenCode plugin config from the schema
 - **credit_watchdog.py / night_cap_check.py** - spend guardrails
-- **weekly_routing_review.py** - receipts -> routing diff proposals
+- **weekly_routing_review.py** - receipts + memory cards -> routing diff proposals (both planes cited)
 - **omo_bridge.py** - machine-grade an OmO `SUCCESS.md` bar: every criterion
   needs an author check plus a verifier distinct from the owner; `check:`
   tags must resolve to real battery checkers (`selftest` included)

@@ -257,6 +257,53 @@ def _check_keyfacts(text: str) -> bool:
     low = text.lower()
     return all(k in low for k in _KEYFACTS)
 
+
+# multi-step plan probe: five steps with a partial order. checkout must be
+# first; install-deps after checkout; lint and test both after install-deps
+# (no constraint between them); package last, after both lint and test.
+_PLAN_STEPS = ("checkout", "install-deps", "lint", "test", "package")
+_PLAN_DEPS = {
+    "install-deps": ["checkout"], "lint": ["install-deps"],
+    "test": ["install-deps"], "package": ["lint", "test"],
+}
+
+
+def _check_multi_step_plan(text: str) -> bool:
+    try:
+        plan = _last_json_block(text)["plan"]
+    except Exception:
+        m = re.search(r"\[[^\[\]]*\]", text.replace("'", '"'))
+        if not m:
+            return False
+        try:
+            plan = json.loads(m.group(0))
+        except Exception:
+            return False
+    if (not isinstance(plan, list) or len(plan) != 5
+            or sorted(plan) != sorted(_PLAN_STEPS)):
+        return False
+    pos = {s: i for i, s in enumerate(plan)}
+    return (pos["checkout"] == 0 and pos["package"] == 4
+            and all(pos[d] < pos[s] for s, ds in _PLAN_DEPS.items() for d in ds))
+
+
+# config-audit probe: exactly one violation in a prod config (debug enabled);
+# the reply must name the right key and a reason that says why.
+_AUDIT_VIOLATION = "debug_mode"
+
+
+def _check_config_audit(text: str) -> bool:
+    try:
+        out = _last_json_block(text)
+    except Exception:
+        return False
+    if not isinstance(out, dict):
+        return False
+    if out.get("violation") != _AUDIT_VIOLATION:
+        return False
+    reason = str(out.get("reason", ""))
+    return bool(reason.strip()) and "debug" in reason.lower()
+
 TASKS = {
     "math": {
         "prompt": ("A factory produces 4 widgets per hour for the first 3 hours, "
@@ -395,6 +442,33 @@ TASKS = {
                    "in English. Reply with only the summary."),
         "truth": "all of: fancorp,q3,revenue,14.2,3%; <= 20 words",
         "check": _check_keyfacts,
+    },
+    "multi-step-plan": {
+        "prompt": ("A release pipeline has five steps: checkout, install-deps, "
+                   "lint, test, package. Constraints: checkout must run "
+                   "first; install-deps runs after checkout; lint and test "
+                   "both run after install-deps (either order, they are "
+                   "independent of each other); package runs last, after "
+                   "both lint and test. Reply with only a JSON object of the "
+                   "form {\"plan\": [\"step\", ...]} listing all five steps in "
+                   "one valid execution order. Nothing else."),
+        "truth": "any order with checkout first, package last, deps held",
+        "check": _check_multi_step_plan,
+    },
+    "config-audit": {
+        "prompt": ("Audit this production config for exactly ONE security "
+                   "violation:\n"
+                   "[server]\n"
+                   "port = 8443\n"
+                   "tls = true\n"
+                   "debug_mode = true\n"
+                   "retries = 3\n\n"
+                   "Reply with only a JSON object of the form "
+                   "{\"violation\": \"<setting name>\", \"reason\": \"<one short "
+                   "sentence>\"} naming the violating setting and why. "
+                   "Nothing else."),
+        "truth": ('{"violation": "debug_mode", "reason": "...debug..."}'),
+        "check": _check_config_audit,
     },
 }
 
@@ -562,6 +636,10 @@ def cmd_selftest(args):
                      '"passengers": 2, "max_results": 3}}'),
         "keyfacts": ("Fancorp Q3 revenue hit 14.2 billion dollars, up 3%; "
                      "the head of product resigned and shares fell 5%."),
+        "multi-step-plan": ('{"plan": ["checkout", "install-deps", '
+                            '"test", "lint", "package"]}'),
+        "config-audit": ('{"violation": "debug_mode", "reason": "debug '
+                         'enabled in production leaks internals"}'),
     }
     fails = []
     for task, spec in TASKS.items():
@@ -598,6 +676,16 @@ def cmd_selftest(args):
                        "of product resigned and the stock fell by five percent "
                        "in after hours trading."):
         fails.append("keyfacts/accepts-over-word-limit")
+    if _check_multi_step_plan('{"plan": ["package", "test", "lint", '
+                               '"install-deps", "checkout"]}'):
+        fails.append("multi-step-plan/accepts-reversed-order")
+    if _check_multi_step_plan('{"plan": ["checkout", "install-deps", '
+                               '"lint", "package", "test"]}'):
+        fails.append("multi-step-plan/accepts-package-before-test")
+    if _check_config_audit('{"violation": "tls", "reason": "tls is on"}'):
+        fails.append("config-audit/accepts-wrong-key(tls)")
+    if _check_config_audit('{"violation": "debug_mode", "reason": ""}'):
+        fails.append("config-audit/accepts-empty-reason")
 
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:

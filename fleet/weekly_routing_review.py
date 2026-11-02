@@ -13,6 +13,7 @@ HERE = Path(__file__).resolve().parent
 RECEIPTS = HERE / "receipts" / "routing.jsonl"
 PROPOSALS = HERE / "routing-proposals"
 SCHEMA = HERE / "routing.schema.json"
+MEMORY = HERE / "memory" / "routing-memory.json"
 MIN_SAMPLES = 20
 
 
@@ -111,12 +112,29 @@ def propose(analysis: dict, schema: dict) -> list[dict]:
     return proposals
 
 
+def load_memory() -> dict:
+    """Memory plane (ladder phase 4): per-model cards from graded battery
+    rows, written by memory_bridge.py. Empty when not yet generated."""
+    if not MEMORY.exists():
+        return {}
+    doc = json.loads(MEMORY.read_text(encoding="utf-8"))
+    return {m: {"pass_rate": c.get("pass_rate"), "n_rows": c.get("n_rows"),
+                "weak_tasks": c.get("weak_tasks")}
+            for m, c in doc.get("cards", {}).items()}
+
+
 def main():
     PROPOSALS.mkdir(parents=True, exist_ok=True)
     receipts = load_receipts(7)
     analysis = analyze(receipts)
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     proposals = propose(analysis, schema)
+    memory = load_memory()
+
+    # annotate each proposal with both models' battery memory, so the
+    # human approval decision cites both evidence planes, not folklore
+    for p in proposals:
+        p["memory"] = {m: memory.get(m) for m in (p["from"], p["to"])}
 
     report = {
         "generated": datetime.now().isoformat(),
@@ -124,12 +142,18 @@ def main():
         "receipt_count": len(receipts),
         "analysis": analysis,
         "proposals": proposals,
+        "memory": memory,
         "note": "Proposals require human approval. Apply manually to routing.schema.json + regenerate OmO config. Never auto-commit.",
     }
     out_path = PROPOSALS / f"{date.today().isoformat()}.json"
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"Wrote {out_path}")
     print(f"Receipts: {len(receipts)}  Classes analyzed: {len(analysis)}  Proposals: {len(proposals)}")
+    if memory:
+        print(f"Memory plane: {len(memory)} model cards "
+              f"({', '.join(f'{m} {c['pass_rate']:.1%}' for m, c in memory.items())})")
+    else:
+        print("Memory plane: absent (run python fleet/memory_bridge.py)")
     if proposals:
         for p in proposals:
             print(f"  PROPOSE: {p['class']}: {p['from']} -> {p['to']} ({p['reason']})")

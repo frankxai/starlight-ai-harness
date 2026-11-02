@@ -241,7 +241,9 @@
       "task-graph",
       "debug-repair",
       "tool-use",
-      "keyfacts"
+      "keyfacts",
+      "multi-step-plan",
+      "config-audit"
     ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
@@ -275,6 +277,10 @@
     {
       "ts": "2026-11-02",
       "change": "battery v3 agentic wave 3+4: tool-use (one documented tool, typed args; wrong tool / unformatted date must fail) and keyfacts (summary <= 20 words incl. all key facts; missing facts / over limit must fail)"
+    },
+    {
+      "ts": "2026-11-02",
+      "change": "battery v5 + SIS lane (ladder phase 4): multi-step-plan (partial-order planning) and config-audit (one-violation extraction) tasks; memory_bridge.py cards now feed the weekly routing review (proposals cite both planes)"
     }
   ]
 }

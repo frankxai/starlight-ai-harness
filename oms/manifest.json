@@ -27,7 +27,7 @@
     },
     {
       "path": "fleet/harness_eval.py",
-      "role": "11-task deterministic battery + runner + report"
+      "role": "18-task deterministic battery + runner + report"
     },
     {
       "path": "fleet/run_opencode.py",
@@ -60,6 +60,10 @@
     {
       "path": "fleet/weekly_routing_review.py",
       "role": "receipts -> routing diff proposals (human approval)"
+    },
+    {
+      "path": "fleet/memory_bridge.py",
+      "role": "graded battery rows -> per-model memory cards (fleet/memory/routing-memory.{json,md}, --check self-grade); feeds weekly_routing_review proposals (ladder phase 4)"
     },
     {
       "path": "oms/opencode-plugin/index.ts",
@@ -111,6 +115,7 @@
     "python fleet/night_cap_check.py",
     "python fleet/nightly_eval.py  # scheduled-task target after GATE approval",
     "python fleet/weekly_routing_review.py",
+    "python fleet/memory_bridge.py [--check]",
     "python oms/verify.py"
   ],
   "verify": {
