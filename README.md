@@ -61,3 +61,7 @@ export STARLIGHT_RECEIPTS_PATH=/your/dir/receipts.jsonl
 
 Exported from the private oh-my-starlight (OmS) package by `oms/export_template.py`,
 which sanitizes machine specifics. See `SANITIZATION.md`.
+
+## License
+
+MIT - see [LICENSE](LICENSE). Fork it, build on it, ship it.
