@@ -171,6 +171,7 @@ def _check_task_graph(text: str) -> bool:
         except Exception:
             return False
     if (not isinstance(order, list) or len(order) != 5
+            or not all(isinstance(j, str) for j in order)
             or sorted(order) != ["A", "B", "C", "D", "E"]):
         return False
     pos = {job: i for i, job in enumerate(order)}
@@ -234,12 +235,12 @@ def _check_tool_use(text: str) -> bool:
         if key not in args:
             return False
         got = args[key]
+        # strict types: floats (2.0) and bools (True) violate the documented
+        # int contract even when == compares equal; strings must match exactly
         if isinstance(want, int):
-            if got != want:
+            if type(got) is not int or got != want:
                 return False
         elif got != want:
-            return False
-        if isinstance(want, int) is False and isinstance(got, (bool, float)):
             return False
     return True
 
@@ -255,7 +256,13 @@ def _check_keyfacts(text: str) -> bool:
     if len(words) > _WORDLIMIT or len(words) == 0:
         return False
     low = text.lower()
-    return all(k in low for k in _KEYFACTS)
+    # complete-value matching: "14.2" must not match inside "114.2",
+    # "3%" must not match inside "13%" - digit boundaries required
+    if not re.search(r"(?<![\d.])14\.2(?![\d])", low):
+        return False
+    if not re.search(r"(?<![\d])3%(?![\d])", low):
+        return False
+    return all(k in low for k in ("fancorp", "q3", "revenue"))
 
 
 # multi-step plan probe: five steps with a partial order. checkout must be
@@ -280,6 +287,7 @@ def _check_multi_step_plan(text: str) -> bool:
         except Exception:
             return False
     if (not isinstance(plan, list) or len(plan) != 5
+            or not all(isinstance(s, str) for s in plan)
             or sorted(plan) != sorted(_PLAN_STEPS)):
         return False
     pos = {s: i for i, s in enumerate(plan)}
@@ -301,8 +309,15 @@ def _check_config_audit(text: str) -> bool:
         return False
     if out.get("violation") != _AUDIT_VIOLATION:
         return False
-    reason = str(out.get("reason", ""))
-    return bool(reason.strip()) and "debug" in reason.lower()
+    reason = str(out.get("reason", "")).strip()
+    if not reason:
+        return False
+    # a correct explanation names the risk or the setting; a claim that
+    # enabling debug in production is fine contradicts the audit
+    low = reason.lower()
+    if "safe" in low or "fine" in low or "no risk" in low:
+        return False
+    return True
 
 TASKS = {
     "math": {
@@ -579,7 +594,15 @@ def cmd_run_gateway(args):
             append({"ts": ts, "model": args.model, "task": task, "ok": False,
                     "error": str(e), "harness": "gateway"})
             continue
-        ok = bool(spec["check"](r["content"]))
+        try:
+            ok = bool(spec["check"](r["content"]))
+        except Exception as e:
+            # a checker crash (e.g. non-string entries) is a graded FAIL,
+            # never an aborted battery
+            results[task] = {"error": f"checker raised: {e}"}
+            append({"ts": ts, "model": args.model, "task": task, "ok": False,
+                    "error": f"checker raised: {e}", "harness": "gateway"})
+            continue
         u = r.get("usage", {}) or {}
         reasoning_only = bool(u.get("completion_tokens", 0)) and not r["content"].strip()
         rec = {"ts": ts, "model": args.model, "task": task, "ok": ok,
@@ -676,6 +699,12 @@ def cmd_selftest(args):
                        "of product resigned and the stock fell by five percent "
                        "in after hours trading."):
         fails.append("keyfacts/accepts-over-word-limit")
+    if _check_keyfacts("Fancorp Q3 revenue was 114.2 billion dollars, up 13%."):
+        fails.append("keyfacts/accepts-altered-figures(114.2/13%)")
+    if _check_keyfacts('{"tool": "search_flights", "args": {"origin": "AMS", '
+                       '"destination": "LIS", "date": "2026-11-05", '
+                       '"passengers": 2.0, "max_results": 3}}'):
+        fails.append("tool-use/accepts-float-int(2.0)")
     if _check_multi_step_plan('{"plan": ["package", "test", "lint", '
                                '"install-deps", "checkout"]}'):
         fails.append("multi-step-plan/accepts-reversed-order")
@@ -684,8 +713,16 @@ def cmd_selftest(args):
         fails.append("multi-step-plan/accepts-package-before-test")
     if _check_config_audit('{"violation": "tls", "reason": "tls is on"}'):
         fails.append("config-audit/accepts-wrong-key(tls)")
+    if _check_config_audit('{"violation": "debug_mode", "reason": "debug is safe to enable in production"}'):
+        fails.append("config-audit/accepts-safe-claim")
     if _check_config_audit('{"violation": "debug_mode", "reason": ""}'):
         fails.append("config-audit/accepts-empty-reason")
+    if not _check_config_audit('{"violation": "debug_mode", "reason": "Disable it to prevent stack traces and secrets leaking to clients"}'):
+        fails.append("config-audit/rejects-correct-explanation-without-keyword")
+    if _check_multi_step_plan('{"plan": ["checkout", "install-deps", "lint", "test", null]}'):
+        fails.append("multi-step-plan/accepts-null-entry")
+    if _check_task_graph('{"order": ["A", "B", "C", "D", 5]}'):
+        fails.append("task-graph/accepts-non-string-entry")
 
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:

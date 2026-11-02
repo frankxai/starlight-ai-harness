@@ -64,8 +64,8 @@ def _agg_receipts() -> list[dict]:
     # Rows carry source (opencode-plugin / claude-code-hook / ...).
     sources: dict = {}
     for ledger in sorted(RECEIPTS_DIR.glob("*.jsonl")):
-        if ledger.name == "opencode_events_raw.jsonl":
-            continue
+        if ledger.name in ("opencode_events_raw.jsonl", "routing.jsonl"):
+            continue  # raw events + routing decisions are not adapter receipts
         for line in ledger.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue

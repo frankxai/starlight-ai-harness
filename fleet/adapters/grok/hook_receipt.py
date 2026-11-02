@@ -81,6 +81,13 @@ def main() -> int:
     row = receipt_from_payload(read_payload())
     sink = os.environ.get("STARLIGHT_RECEIPTS_PATH") or str(DEFAULT_SINK)
     try:
+        # directory override (e.g. a Syncthing folder): resolve to a ledger
+        # file inside it instead of failing open() on a directory
+        p = Path(sink)
+        if p.is_dir():
+            # directory override (e.g. a Syncthing folder): resolve to a
+            # ledger file inside it instead of failing open() on a directory
+            sink = str(p / "starlight-receipts.jsonl")
         Path(sink).parent.mkdir(parents=True, exist_ok=True)
         with open(sink, "a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")

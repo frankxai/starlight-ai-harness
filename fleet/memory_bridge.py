@@ -61,7 +61,18 @@ def build_cards(rows: list[dict]) -> dict:
                         if oks and sum(oks) / len(oks) >= STRONG_RATE)
         weak = sorted(set(r["task"] for r in fails
                           if r["task"] not in strong))
-        spend = sum(r.get("cost_usd") or 0 for r in rs)
+        spend_rows = [r.get("cost_usd") for r in rs]
+        priced = [c for c in spend_rows if c is not None]
+        unpriced = len(spend_rows) - len(priced)
+        spend = sum(priced)
+        # cost honesty: unpriced rows are UNKNOWN, not free - totals and
+        # per-pass figures are null rather than silently understated
+        if unpriced:
+            cost_total = None
+            cost_per_pass = None
+        else:
+            cost_total = round(spend, 6)
+            cost_per_pass = round(spend / passed, 6) if passed else None
         cards[model] = {
             "model": model,
             "as_of": as_of,
@@ -70,8 +81,10 @@ def build_cards(rows: list[dict]) -> dict:
             "pass_rate": round(passed / n, 4) if n else None,
             "strong_tasks": strong,
             "weak_tasks": weak,
-            "cost_total_usd": round(spend, 6),
-            "cost_per_pass_usd": round(spend / passed, 6) if passed else None,
+            "cost_total_usd": cost_total,
+            "cost_per_pass_usd": cost_per_pass,
+            "cost_priced_rows": len(priced),
+            "cost_unpriced_rows": unpriced,
             "recent_fails": [
                 {"task": r["task"], "ts": r["ts"]}
                 for r in fails[-RECENT_FAILS:]
@@ -95,7 +108,10 @@ def render_md(doc: dict) -> str:
     ]
     for m, c in doc["cards"].items():
         rate = f"{c['pass_rate'] * 100:.1f}%" if c["pass_rate"] is not None else "-"
-        cpp = f"${c['cost_per_pass_usd']:.6f}" if c["cost_per_pass_usd"] is not None else "-"
+        if c.get("cost_per_pass_usd") is None:
+            cpp = f"unknown({c.get('cost_unpriced_rows', '?')} unpriced)"
+        else:
+            cpp = f"${c['cost_per_pass_usd']:.6f}"
         lines.append(f"| `{m}` | {c['n_rows']} | {rate} | {cpp} "
                      f"| {', '.join(c['strong_tasks'][:8]) or '-'} "
                      f"| {', '.join(c['weak_tasks']) or '-'} |")

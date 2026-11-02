@@ -21,7 +21,7 @@ Grok rule hooks (`~/.grok/settings/hooks.json`):
 ```
 
 The hook accepts the payload via stdin or `argv[1]`. Point
-`STARLIGHT_RECEIPTS_PATH` at the Syncthing-shared receipts dir so every
+`STARLIGHT_RECEIPTS_PATH (a .jsonl file; a directory is auto-resolved to starlight-receipts.jsonl inside it)` at the Syncthing-shared receipts dir so every
 machine's rows land in one estate ledger.
 
 ## Privacy

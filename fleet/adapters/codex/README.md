@@ -14,7 +14,7 @@ notify = ["<python>", "<repo>/fleet/adapters/codex/hook_receipt.py"]
 ```
 
 Codex passes the event JSON as one argument; the hook also accepts it on
-stdin. Point `STARLIGHT_RECEIPTS_PATH` at the Syncthing-shared receipts
+stdin. Point `STARLIGHT_RECEIPTS_PATH (a .jsonl file; a directory is auto-resolved to starlight-receipts.jsonl inside it)` at the Syncthing-shared receipts
 dir so every machine's rows land in one estate ledger.
 
 ## Privacy
