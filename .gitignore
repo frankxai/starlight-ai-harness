@@ -1,5 +1,6 @@
-# receipts and eval telemetry are local, not template content
+# receipts, eval telemetry, and rendered pages are local, not template content
 receipts/
 evals/
+reports/
 __pycache__/
 *.pyc
