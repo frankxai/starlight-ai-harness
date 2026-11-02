@@ -55,12 +55,61 @@ def run(args: list[str], label: str) -> int:
     return p.returncode
 
 
+def prep() -> int:
+    """Step 0: keep the nightly checkout current with reviewed main.
+
+    The 2026-11-02 audit found the schtasks wire running a pinned checkout
+    stuck on a consumed branch: the night would have measured an 18-check
+    battery under the pre-DST-fix cap gate and written inconsistent rows.
+    Fast-forward only - no rebase, no stash, never merging around foreign
+    dirty state. A diverged or dirty-conflicting checkout REFUSES to run
+    stale: the battery is skipped, the refusal is recorded, nothing spends.
+    Already-current trees pass even when dirty (no-op merge)."""
+    repo = str(HERE.parent)
+
+    def git(*args: str) -> tuple[int, str]:
+        p = subprocess.run(["git", "-C", repo, *args],
+                           capture_output=True, text=True, timeout=300)
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+    rc, out = git("fetch", "origin")
+    if rc != 0:
+        print(f"[prep] fetch refused: {out.strip()}")
+        return 1
+    rc, _ = git("merge", "--ff-only", "origin/main")
+    if rc != 0:
+        print("[prep] cannot fast-forward to origin/main - refusing to run "
+              "stale (merge manually or point the task at a fresh worktree)")
+        return 2
+    # a branch ahead of main carries LOCAL un-reviewed commits: reviewed
+    # main is the tracked-content contract, so anything ahead refuses too
+    rc, n_ahead = git("rev-list", "--count", "origin/main..HEAD")
+    if n_ahead.strip() not in ("", "0"):
+        print(f"[nightly] prep refuses: {n_ahead.strip()} local commit(s) "
+              "ahead of origin/main - run main-tracking branches only")
+        return 2
+    print("[prep] at", git("rev-parse", "--short", "HEAD")[1].strip())
+    return 0
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "prep":
+        # standalone boot (also the selftest of the refresh step)
+        raise SystemExit(prep())
+    # 0. content freshness: never measure a stale battery
+    rc = prep()
+    if rc != 0:
+        sys.exit(f"[nightly] prep rc={rc} - battery skipped entirely "
+                 "(stale content is the hazard the fix removes)")
+
     # 1. night-cap gate (manual battery counts as planned spend of ~$0.01)
     rc = run(["fleet/night_cap_check.py", "--extra-planned-usd", "0.01"],
              "night-cap gate")
     if rc != 0:
-        sys.exit("night cap exceeded - battery skipped entirely")
+        # fail-closed on BOTH "cap exceeded" and "gate tool broke": never
+        # spend unattended when the cap itself cannot be verified. The
+        # message stays truthful for either cause.
+        sys.exit(f"night-cap gate did not pass (rc={rc}) - battery skipped entirely")
 
     # 2. gateway rail (records usage+cost now)
     run(["fleet/harness_eval.py", "run-gateway", "--model", GATEWAY_MODEL],

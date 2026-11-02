@@ -5,6 +5,7 @@ Never auto-commits (money/merges stay on the human's button).
 """
 import json
 import os
+import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -17,23 +18,34 @@ MEMORY = HERE / "memory" / "routing-memory.json"
 MIN_SAMPLES = 20
 
 
-def load_receipts(days: int = 7) -> list[dict]:
+def load_receipts(days: int = 7) -> tuple[list[dict], int]:
+    """Well-formed route receipts from the trailing window, plus the number of
+    malformed lines skipped. The ledger is an append log: a truncated or
+    hand-edited line is data corruption, not a fatal event - crashing on it
+    used to kill the whole Monday 04:00 run (reproduced 2026-11-02)."""
     if not RECEIPTS.exists():
-        return []
+        return [], 0
     cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
     out = []
+    bad = 0
     for line in RECEIPTS.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
-        r = json.loads(line)
         try:
+            r = json.loads(line)
+            float(r["cost_usd"])
+            int(r["latency_ms"])
+            int(r["success"])
+            r["task_class"]
+            r["used"]
             ts = datetime.fromisoformat(r["ts"]).timestamp()
-        except Exception:
+        except (KeyError, ValueError, TypeError):
+            bad += 1
             continue
         if ts >= cutoff:
             out.append(r)
-    return out
+    return out, bad
 
 
 def analyze(receipts: list[dict]) -> dict:
@@ -123,9 +135,43 @@ def load_memory() -> dict:
             for m, c in doc.get("cards", {}).items()}
 
 
+def selftest() -> int:
+    """Synthetic ledger with one corrupt line and one fieldless line: the
+    review must keep going, skip them, and count the skips - never crash
+    (the pre-fix behavior killed the whole Monday run)."""
+    import tempfile
+    tmp = Path(tempfile.mkdtemp(prefix="wrr-selftest-"))
+    ledger = tmp / "routing.jsonl"
+    good = json.dumps({"ts": "2026-11-01T12:00:00+00:00", "task_class": "code",
+                       "used": "m1", "fallback_used": False, "cost_usd": 0.01,
+                       "latency_ms": 100, "success": True, "provider": "",
+                       "machine": ""},
+                      )
+    bad_json = "{not valid json"
+    bad_fields = json.dumps({"ts": "2026-11-01T13:00:00+00:00"})
+    ledger.write_text("\n".join([good, bad_json, bad_fields]) + "\n",
+                      encoding="utf-8")
+    global RECEIPTS
+    old = RECEIPTS
+    RECEIPTS = ledger
+    try:
+        rows, skipped = load_receipts(7)
+    finally:
+        RECEIPTS = old
+    if len(rows) != 1 or skipped != 2:
+        print(f"weekly selftest FAIL: rows={len(rows)} skipped={skipped} "
+              f"(want 1, 2)")
+        return 1
+    print("weekly selftest OK: corrupt + fieldless ledger lines skipped "
+          "and counted, run survives")
+    return 0
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "selftest":
+        raise SystemExit(selftest())
     PROPOSALS.mkdir(parents=True, exist_ok=True)
-    receipts = load_receipts(7)
+    receipts, bad = load_receipts(7)
     analysis = analyze(receipts)
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     proposals = propose(analysis, schema)
@@ -140,6 +186,7 @@ def main():
         "generated": datetime.now().isoformat(),
         "window_days": 7,
         "receipt_count": len(receipts),
+        "receipts_skipped_malformed": bad,
         "analysis": analysis,
         "proposals": proposals,
         "memory": memory,
@@ -148,10 +195,16 @@ def main():
     out_path = PROPOSALS / f"{date.today().isoformat()}.json"
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"Wrote {out_path}")
-    print(f"Receipts: {len(receipts)}  Classes analyzed: {len(analysis)}  Proposals: {len(proposals)}")
+    print(f"Receipts: {len(receipts)} (malformed skipped: {bad})  "
+          f"Classes analyzed: {len(analysis)}  Proposals: {len(proposals)}")
     if memory:
-        print(f"Memory plane: {len(memory)} model cards "
-              f"({', '.join(f'{m} {c['pass_rate']:.1%}' for m, c in memory.items())})")
+        cards = ", ".join(
+            "{} {}".format(
+                m,
+                "{:.1%}".format(c["pass_rate"])
+                if c.get("pass_rate") is not None else "n/a")
+            for m, c in memory.items())
+        print(f"Memory plane: {len(memory)} model cards ({cards})")
     else:
         print("Memory plane: absent (run python fleet/memory_bridge.py)")
     if proposals:
