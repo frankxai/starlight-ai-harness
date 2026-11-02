@@ -1,4 +1,4 @@
-﻿"""Build a self-contained styled HTML dashboard from the cross-harness report.
+"""Build a self-contained styled HTML dashboard from the cross-harness report.
 
 Usage:
     python fleet/report_dashboard.py                 # build fleet/reports/dashboard.html
@@ -37,7 +37,7 @@ _DOC = """\
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cross-Harness Report ┬À Starlight AI Harness</title>
+<title>Cross-Harness Report · Starlight AI Harness</title>
 <style>
 :root{{
   --bg:#0A0A0B; --surface:#131315; --border:#26262A; --text:#F4F4F5;
@@ -86,7 +86,7 @@ a{{color:var(--cyan)}}
 <div class="wrap">
 <header role="banner">
   <h1>Cross-Harness Report</h1>
-  <p>Starlight AI Harness ┬À generated <time datetime="{gen_attr}">{gen}</time></p>
+  <p>Starlight AI Harness · generated <time datetime="{gen_attr}">{gen}</time></p>
   <dl class="kpi">
     <div><dt>Graded passes</dt><dd>{kpi_rows}</dd></div>
     <div><dt>Rails measured</dt><dd>{kpi_rails}</dd></div>
@@ -96,7 +96,7 @@ a{{color:var(--cyan)}}
 </header>
 <main role="main">
 <section aria-labelledby="sec-battery">
-  <h2 id="sec-battery">Battery ┬À 12 tasks, deterministic checkers</h2>
+  <h2 id="sec-battery">Battery · 12 tasks, deterministic checkers</h2>
   <div class="scroll">
   <table>
   <caption>Pass rate, latency, cost per recorded battery row. Fails name the task(s).</caption>
@@ -113,7 +113,7 @@ a{{color:var(--cyan)}}
   </div>
 </section>
 <section aria-labelledby="sec-receipts">
-  <h2 id="sec-receipts">OpenCode plugin receipts ┬À harness overhead</h2>
+  <h2 id="sec-receipts">OpenCode plugin receipts · harness overhead</h2>
   <div class="scroll">
   <table>
   <caption>Cost per message and token mix from fleet/receipts/opencode.jsonl.</caption>
@@ -132,7 +132,7 @@ a{{color:var(--cyan)}}
 </section>
 </main>
 <section aria-labelledby="sec-routing">
-  <h2 id="sec-routing">Routing SoT ┬À chains, caps, pricing</h2>
+  <h2 id="sec-routing">Routing SoT · chains, caps, pricing</h2>
   <div class="scroll">
   <table>
   <caption>Task classes from routing.schema.json: primary model, fallback chain, per-class ceiling.</caption>
@@ -163,8 +163,8 @@ a{{color:var(--cyan)}}
   </div>
 </section>
 <footer role="contentinfo">
-<p>Deterministic render of <code>fleet/reports/cross-harness-latest.json</code> ┬À
-regenerate with <code>python fleet/report_dashboard.py</code> ┬À
+<p>Deterministic render of <code>fleet/reports/cross-harness-latest.json</code> ·
+regenerate with <code>python fleet/report_dashboard.py</code> ·
 gate: <code>python oms/verify.py</code></p>
 </footer>
 </div>
@@ -200,7 +200,7 @@ def build() -> str:
             total_spend += item["total_cost_usd"]
         lat = item.get("avg_latency_ms")
         lat_s = f"{lat / 1000:.1f} s" if lat is not None else "n/a"
-        fails = (", ".join(item["fails"]) or "ÔÇö")
+        fails = (", ".join(item["fails"]) or "—")
         battery_rows.append(
             f'    <tr><td>{html.escape(item["harness"])}</td>'
             f'<td><code>{html.escape(item["model"])}</code></td>'
@@ -214,7 +214,7 @@ def build() -> str:
 
     receipt_rows = []
     for r in data.get("plugin_receipts", []):
-        finish = ", ".join(f"{k} {v}" for k, v in (r.get("finish") or {}).items()) or "ÔÇö"
+        finish = ", ".join(f"{k} {v}" for k, v in (r.get("finish") or {}).items()) or "—"
         receipt_rows.append(
             f'    <tr><td><code>{html.escape(r["modelID"])}</code></td>'
             f'<td class="num">{r["msgs"]}</td>'
@@ -243,13 +243,13 @@ def build() -> str:
         chain_rows.append(
             f'    <tr><td><strong>{html.escape(cls)}</strong></td>'
             f'<td><code>{html.escape(spec["primary"])}</code></td>'
-            f'<td>{" ┬À ".join(f"<code>{html.escape(f)}</code>" for f in spec["fallbacks"] or ["ÔÇö"])}</td>'
+            f'<td>{" · ".join(f"<code>{html.escape(f)}</code>" for f in spec["fallbacks"] or ["—"])}</td>'
             f"<td class=\"num\">{_fmt_num(spec.get('cost_ceiling_usd'), '${:,.0f}')}</td></tr>"
         )
 
     cap_rows = [
         f'    <tr><td>Night cap (unattended)</td><td class="num">${schema["night_cap_usd"]}</td>'
-        f'<td>┬À</td><td class="num">┬À</td><td class="num">┬À</td><td class="num">┬À</td></tr>',
+        f'<td>·</td><td class="num">·</td><td class="num">·</td><td class="num">·</td></tr>',
     ]
     for label, val in (
         ("Credit quota / key", tp["credit_quota_per_key_usd"]),
@@ -260,13 +260,13 @@ def build() -> str:
         cap_rows.append(
             f'    <tr><td>{html.escape(str(label))}</td>'
             f"<td class=\"num\">{'${:,.0f}'.format(val) if isinstance(val, (int, float)) else val}</td>"
-            f"<td>┬À</td><td class=\"num\">┬À</td><td class=\"num\">┬À</td><td class=\"num\">┬À</td></tr>"
+            f"<td>·</td><td class=\"num\">·</td><td class=\"num\">·</td><td class=\"num\">·</td></tr>"
         )
 
     priced_rows = []
     for model, mp in tp["models"].items():
         priced_rows.append(
-            f'    <tr><td>Gateway</td><td class="num">┬À</td>'
+            f'    <tr><td>Gateway</td><td class="num">·</td>'
             f'<td><code>{html.escape(model)}</code></td>'
             f"<td class=\"num\">${mp['input']:.2f}</td>"
             f"<td class=\"num\">${mp['cached']:.2f}</td>"
@@ -274,7 +274,7 @@ def build() -> str:
         )
     for model in schema["free_tier"]["models"]:
         priced_rows.append(
-            f'    <tr><td>Free tier</td><td class="num">┬À</td>'
+            f'    <tr><td>Free tier</td><td class="num">·</td>'
             f'<td><code>{html.escape(model)}</code></td>'
             f'<td class="num">${0:.2f}</td><td class="num">$0.00</td>'
             f'<td class="num">$0.00</td></tr>'
