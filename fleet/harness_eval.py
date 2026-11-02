@@ -265,6 +265,71 @@ def _check_keyfacts(text: str) -> bool:
     return all(k in low for k in ("fancorp", "q3", "revenue"))
 
 
+# test-generation probe: the model writes tests for a function; the tests
+# must FAIL against a buggy implementation (kill the mutant) and PASS
+# against the correct one. Grading = exec both, no LLM judging.
+_TESTGEN_BUGGY = "def f(n):\n    return 2 * n\n"
+_TESTGEN_VALID = "def f(n):\n    return 2 * n + 1\n"
+
+
+def _check_test_generation(text: str) -> bool:
+    m = re.search(r"assert[^\n]+", text)
+    if not m:
+        return False
+    # the buggy implementation must FAIL via assertion (mutant killed)
+    env: dict = {}
+    try:
+        exec(_TESTGEN_BUGGY, env)
+        exec(text, {}, {"f": env["f"]})
+        return False  # buggy survived: tests do not kill the mutant
+    except AssertionError:
+        pass
+    except Exception:
+        return False  # tests must fail via assertion, not crash
+    # the correct implementation must PASS every test
+    env = {}
+    try:
+        exec(_TESTGEN_VALID, env)
+        exec(text, {}, {"f": env["f"]})
+    except Exception:
+        return False
+    return True
+
+
+# error-traceback probe: exec raises for real; the model must name the line
+# that actually raised. Ground truth computed, never hand-written.
+_ERR_FUNC = (
+    "def f(xs):\n"
+    "    total = 0\n"
+    "    for x in xs:\n"
+    "        total += 1 / x\n"
+    "    return total\n"
+)
+
+
+def _error_line() -> int:
+    env: dict = {}
+    try:
+        exec(_ERR_FUNC + "\n" + "f([2, 0])", env)
+    except ZeroDivisionError as e:
+        tb = e.__traceback__
+        while tb.tb_next is not None:
+            tb = tb.tb_next
+        return tb.tb_lineno
+    return 0
+
+
+def _check_error_traceback(text: str) -> bool:
+    line = _error_line()
+    if not line:
+        return False
+    t = text.replace(" ", "")
+    # accept func:<line> with or without trailing colon; reject ±1 lines
+    if f"func:{line}" in t:
+        return True
+    return bool(re.search(rf"line\s*{line}\b", text, re.IGNORECASE))
+
+
 # multi-step plan probe: five steps with a partial order. checkout must be
 # first; install-deps after checkout; lint and test both after install-deps
 # (no constraint between them); package last, after both lint and test.
@@ -485,6 +550,25 @@ TASKS = {
         "truth": ('{"violation": "debug_mode", "reason": "...debug..."}'),
         "check": _check_config_audit,
     },
+    "test-generation": {
+        "prompt": ("Write pytest-style assert tests for this function:\n"
+                    "def f(n):\n"
+                    "    return 2 * n + 1\n"
+                    "Requirements: at least 3 asserts covering positive, negative and "
+                    "zero input; every assert on one line; no if/for/while; reply with "
+                    "only the assert lines, nothing else."),
+        "truth": "asserts that fail on 2*n (mutant) and pass on 2*n+1",
+        "check": _check_test_generation,
+    },
+    "error-traceback": {
+        "prompt": ("This code runs and raises an error:\n"
+                   + _ERR_FUNC +
+                   "The call is f([2, 0]). Reply with ONLY the number of the line "
+                   "inside function f that raises, in the form func:<line>: - nothing "
+                   "else."),
+        "truth": "func:<the real raising line number inside f>:",
+        "check": _check_error_traceback,
+    },
 }
 
 
@@ -663,7 +747,13 @@ def cmd_selftest(args):
                             '"test", "lint", "package"]}'),
         "config-audit": ('{"violation": "debug_mode", "reason": "debug '
                          'enabled in production leaks internals"}'),
+        "test-generation": ("assert f(1) == 3\n"
+                            "assert f(0) == 1\n"
+                            "assert f(-3) == -5\n"),
+    "error-traceback": None,  # computed below from _ERR_FUNC - never hand-written
     }
+    # computed ground truth: the line inside f that actually raises
+    canned["error-traceback"] = f"func:{_error_line()}:"
     fails = []
     for task, spec in TASKS.items():
         want = canned.get(task)
@@ -723,6 +813,24 @@ def cmd_selftest(args):
         fails.append("multi-step-plan/accepts-null-entry")
     if _check_task_graph('{"order": ["A", "B", "C", "D", 5]}'):
         fails.append("task-graph/accepts-non-string-entry")
+    # computed line number - never hand-written ground truth: the computed
+    # line must be the source line that actually contains the division
+    if _error_line() != next(
+            i + 1 for i, l in enumerate(_ERR_FUNC.splitlines())
+            if "total +=" in l):
+        fails.append("error-traceback/computed-line-drift")
+    if not _check_test_generation("assert f(1) == 3\nassert f(0) == 1\nassert f(-3) == -5\n"):
+        fails.append("test-generation/rejects-killing-tests")
+    # the two REAL DS replies that my first-draft checkers rejected:
+    # correct tests (kill mutant + pass valid) and a colon-less func:4
+    if not _check_test_generation("assert f(0) == 1\nassert f(5) == 11\nassert f(-3) == -5\nassert f(-1) == -1\n"):
+        fails.append("test-generation/rejects-correct-DS-tests")
+    if not _check_error_traceback("func:4"):
+        fails.append("error-traceback/rejects-colonless-real-DS-reply")
+    if _check_test_generation("assert f(1) == 2\nassert f(2) == 4\n"):
+        fails.append("test-generation/accepts-non-killing-tests(2n survives)")
+    if _check_error_traceback(f"func:{_error_line() + 1}:"):
+        fails.append("error-traceback/accepts-wrong-line")
 
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:

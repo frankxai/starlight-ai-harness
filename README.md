@@ -12,7 +12,7 @@ assets that drive it.
 - **route_task.py** - classify a task, produce the model chain, record receipts
 - **route_classifier.py / route_executor.py** - imported by the above
 - **gateway_call.py** - gateway caller with 403-catch fallback walking
-- **harness_eval.py** - 18-task battery (v5 agentic+memory), deterministic checkers only
+- **harness_eval.py** - 20-task battery (v6 agentic+memory), deterministic checkers only
   (no LLM judging), `selftest`, `run-gateway`, `report`
 - **report_dashboard.py** - self-contained styled HTML dashboard from the
   cross-harness report (`--check` self-grades the rendered surface)

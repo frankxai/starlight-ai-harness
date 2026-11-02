@@ -243,7 +243,9 @@
       "tool-use",
       "keyfacts",
       "multi-step-plan",
-      "config-audit"
+      "config-audit",
+      "test-generation",
+      "error-traceback"
     ],
     "runner": "fleet/harness_eval.py",
     "selftest": "checkers verified against ground truth, no model calls",
@@ -281,6 +283,10 @@
     {
       "ts": "2026-11-02",
       "change": "battery v5 + SIS lane (ladder phase 4): multi-step-plan (partial-order planning) and config-audit (one-violation extraction) tasks; memory_bridge.py cards now feed the weekly routing review (proposals cite both planes)"
+    },
+    {
+      "ts": "2026-11-02",
+      "change": "battery v6 agentic wave: test-generation (mutation-style - tests must kill the 2*n mutant and pass the real 2*n+1) and error-traceback (name the real raising line, computed ground truth by exec)"
     }
   ]
 }
