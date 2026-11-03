@@ -82,6 +82,14 @@
       "role": "corps contract selftest: frontmatter/model/mode/permission validation + leak rule + negative fixtures"
     },
     {
+      "path": "fleet/harness_matrix.py",
+      "role": "same battery through every installed harness (claude/codex/grok/opencode): one eval row per harness+task, markdown matrix report, hermetic selftest"
+    },
+    {
+      "path": "docs/HARNESS-MATRIX.md",
+      "role": "measured harness matrix: pass rate, latency, cost honesty per rail"
+    },
+    {
       "path": ".opencode/agents/scout.md",
       "role": "corps: read-only mapping agent (measured free scout rail)"
     },
