@@ -2,6 +2,12 @@
 """Weekly routing review: parse receipts + token-tracker reports, propose routing
 diffs. Writes fleet/routing-proposals/YYYY-MM-DD.json for human approval.
 Never auto-commits (money/merges stay on the human's button).
+
+Freshness contract: prep (shared with nightly_eval) fast-forwards to
+reviewed main first; a diverged or local-ahead checkout REFUSES (exit 2)
+instead of reviewing routing on stale code - the 2026-11-03 finding:
+the Sunday 04:00 schtasks run executed the pinned Aug-3 checkout and
+measured an empty window without refusing.
 """
 import json
 import os
@@ -9,6 +15,8 @@ import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+import nightly_eval as _ne  # prep: the shared freshness contract
 
 HERE = Path(__file__).resolve().parent
 RECEIPTS = HERE / "receipts" / "routing.jsonl"
@@ -164,12 +172,81 @@ def selftest() -> int:
         return 1
     print("weekly selftest OK: corrupt + fieldless ledger lines skipped "
           "and counted, run survives")
+
+    # prep refusal: main must exit 2 BEFORE any file writes (fail-closed
+    # freshness - a stale checkout never produces proposals)
+    old_prep, old_argv = _ne.prep, sys.argv[:]
+    _ne.prep = lambda: 2
+    sys.argv = ["weekly_routing_review.py"]
+    try:
+        try:
+            main()
+            rc = 0
+        except SystemExit as e:
+            rc = e.code if isinstance(e.code, int) else 1
+    finally:
+        _ne.prep = old_prep
+        sys.argv = old_argv
+    if rc != 2:
+        print(f"weekly selftest FAIL: prep refusal exited {rc} (want 2)")
+        return 1
+    print("weekly selftest OK: prep refusal exits 2 before any writes")
+
+    # prep advanced the checkout -> the process MUST re-exec itself on
+    # the reviewed revision (never keep running the stale loaded code)
+    class _Restart(Exception):
+        pass
+
+    shas = iter(["old", "new"])
+    real_execv, real_sha = os.execv, _head_sha
+    os.execv = lambda p, a: (_ for _ in ()).throw(_Restart())
+    globals()["_head_sha"] = lambda: next(shas)
+    old_prep = _ne.prep
+    _ne.prep = lambda: 0
+    sys.argv = ["weekly_routing_review.py"]
+    try:
+        main()
+        restarted = False
+    except _Restart:
+        restarted = True
+    finally:
+        os.execv = real_execv
+        globals()["_head_sha"] = real_sha
+        _ne.prep = old_prep
+    if not restarted:
+        print("weekly selftest FAIL: advancing prep must trigger re-exec")
+        return 1
+    print("weekly selftest OK: advancing prep triggers re-exec")
     return 0
+
+
+def _head_sha() -> str:
+    import subprocess
+    p = subprocess.run(["git", "-C", str(HERE.parent), "rev-parse", "HEAD"],
+                       capture_output=True, text=True)
+    return p.stdout.strip()
 
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "selftest":
         raise SystemExit(selftest())
+    # 0. content freshness: never review routing on stale code. In a
+    # diverged or local-ahead checkout this exits 2 before any analysis.
+    pre = _head_sha()
+    rc = _ne.prep()
+    if rc != 0:
+        print(f"[weekly] prep rc={rc} - review skipped entirely "
+              "(stale content must not produce proposals)")
+        raise SystemExit(2)
+    # prep may have fast-forwarded THIS file on disk: the process still
+    # runs the old load_receipts/analyze/propose it loaded at start
+    # (2026-11-03 review finding). Re-exec so the reviewed revision's
+    # code is what actually executes; the second pass ff's to a no-op.
+    if pre and _head_sha() != pre:
+        print("[weekly] prep advanced the checkout - re-exec on the "
+              "reviewed revision")
+        os.execv(sys.executable, [sys.executable,
+                                  str(Path(__file__).resolve())] + sys.argv[1:])
     PROPOSALS.mkdir(parents=True, exist_ok=True)
     receipts, bad = load_receipts(7)
     analysis = analyze(receipts)

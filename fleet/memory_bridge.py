@@ -92,7 +92,11 @@ def build_cards(rows: list[dict]) -> dict:
             "first_row_ts": rs[0]["ts"],
             "last_row_ts": rs[-1]["ts"],
         }
-    return {"as_of": as_of, "source": str(RESULTS), "cards": cards}
+    # repo-relative: the cards ship to the public repos; an absolute
+    # machine path here is a leak (caught by the pre-push scan 2026-11-03)
+    src = RESULTS.relative_to(FLEET.parent).as_posix() \
+        if RESULTS.is_absolute() else str(RESULTS)
+    return {"as_of": as_of, "source": src, "cards": cards}
 
 
 def render_md(doc: dict) -> str:
