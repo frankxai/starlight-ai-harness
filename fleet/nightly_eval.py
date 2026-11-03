@@ -17,9 +17,10 @@ Any other argument REFUSES (exit 2) - never a fall-through into a real
 unattended battery (the 2026-11-02 catch).
 
 Exit codes (schtasks Last Run Result): measurement steps (gateway battery,
-cross-harness report) are exit-fatal; a failing one exits 1. Content/cap
-refusals exit with their own codes (prep 2, gate rc). The free opencode
-rail and page builders never fail the night (logged to the transcript).
+cross-harness report) are exit-fatal; a failing one exits 1. Preflight (a
+gate selftest failing) exits 3 before any spend. Content/cap refusals exit
+with their own codes (prep 2, gate rc). The free opencode rail and page
+builders never fail the night (logged to the transcript).
 Transcript: fleet/reports/night/nightly-eval.log (tee'd, size-capped).
 
 Wire (GATE: mutation of a registered scheduled task, one command):
@@ -120,6 +121,26 @@ def run_night() -> int:
               "(stale content is the hazard the fix removes)")
         return 2
 
+    # 0b. fail-closed preflight: every gate's selftest must pass BEFORE the
+    # night spends anything. A gate that cannot verify itself must not let
+    # the battery proceed (the 2026-11-03 finding: last night's run measured
+    # an 18-task battery on stale code and still exited 0 - nothing failed
+    # because nothing could). Deterministic checks only, ~4s, no spend.
+    for selftest, label in (
+        (["fleet/harness_eval.py", "selftest"], "battery checker selftest"),
+        (["fleet/night_cap_check.py", "selftest"], "cap gate selftest"),
+        (["fleet/weekly_routing_review.py", "selftest"], "review selftest"),
+        (["fleet/route_classifier.py", "selftest"], "classifier selftest"),
+        (["fleet/nightly_eval.py", "selftest"], "orchestrator selftest"),
+        (["fleet/agents_selftest.py"], "corps contract selftest"),
+        (["fleet/reports_selftest.py"], "page builder selftest"),
+    ):
+        rc = run(selftest, label)
+        if rc != 0:
+            print(f"[nightly] preflight FAIL: {label} rc={rc} - battery "
+                  "skipped (a gate that cannot verify itself must not spend)")
+            return 3
+
     # 1. night-cap gate (manual battery counts as planned spend of ~$0.01)
     rc = run(["fleet/night_cap_check.py", "--extra-planned-usd", "0.01"],
              "night-cap gate")
@@ -178,10 +199,13 @@ def selftest() -> int:
     clean night passes; prep/cap refusals return their own codes."""
     real_prep, real_ram, real_run = prep, free_ram, run
 
-    def stub_night(prep_rc=0, cap_rc=0, gateway_rc=0, report_rc=0) -> int:
+    def stub_night(prep_rc=0, cap_rc=0, gateway_rc=0, report_rc=0,
+                   preflight_rc=0) -> int:
         def fake_run(args, label):
             if label == "night-cap gate":
                 return cap_rc
+            if label.endswith("selftest"):
+                return preflight_rc
             if "gateway battery" in label:
                 return gateway_rc
             if "opencode battery" in label:
@@ -200,6 +224,8 @@ def selftest() -> int:
     fails = []
     if stub_night(prep_rc=2) != 2:
         fails.append("prep refusal must return 2")
+    if stub_night(preflight_rc=1) != 3:
+        fails.append("a failing gate selftest must return 3 (no spend)")
     if stub_night(cap_rc=3) != 3:
         fails.append("cap refusal must return the gate's rc")
     if stub_night(gateway_rc=1) != 1:
@@ -221,7 +247,7 @@ def selftest() -> int:
         print("NIGHTLY SELFTEST FAIL: " + "; ".join(fails))
         return 1
     print("nightly selftest OK: rc propagation holds on all 5 cases; "
-          "unknown argv refuses")
+          "preflight fail-closed; unknown argv refuses")
     return 0
 
 
