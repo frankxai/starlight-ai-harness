@@ -19,6 +19,8 @@ Usage:
   python fleet/agentic_eval.py --report
   python fleet/agentic_eval.py selftest
 """
+import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,7 +37,8 @@ from harness_matrix import BIN_CANDIDATES, resolve  # noqa: E402
 
 MULTI_FLAGS = {
     "claude": ["--permission-mode", "acceptEdits"],
-    "codex": ["-s", "workspace-write", "--skip-git-repo-check"],
+    "codex": ["-s", os.environ.get("CODEX_SANDBOX", "workspace-write"),
+              "--skip-git-repo-check"],
     "grok": ["--permission-mode", "acceptEdits"],
     "opencode": ["--auto"],
 }
@@ -62,11 +65,39 @@ def _fixture_files(wd: Path) -> None:
     (data / "inner" / "d.txt").write_text("x", encoding="utf-8")
 
 
+def _fixture_csv(wd: Path) -> None:
+    (wd / "sales.csv").write_text(
+        "id,region,amount\n1,EU,10.00\n2,US,5.00\n3,EU,16.50\n",
+        encoding="utf-8")
+
+
+def _fixture_json(wd: Path) -> None:
+    (wd / "config.json").write_text(
+        '{"name": "app", "debug": false, "ports": [80, 443]}',
+        encoding="utf-8")
+
+
+def _fixture_grep_bug(wd: Path) -> None:
+    (wd / "calc.py").write_text(
+        "def area(r):\n    return 2 * 3.14\n", encoding="utf-8")
+    (wd / "test_area.py").write_text(
+        "from calc import area\nassert abs(area(2) - 12.56) < 0.01\n"
+        "print('PASS')\n", encoding="utf-8")
+
+
+def _fixture_logs(wd: Path) -> None:
+    (wd / "a.log").write_text(
+        "INFO ok\nERROR disk\nINFO x\nERROR net\n", encoding="utf-8")
+    (wd / "b.log").write_text("ERROR time\nINFO ok\n", encoding="utf-8")
+    (wd / "c.log").write_text("INFO only\n", encoding="utf-8")
+
+
 def _grade_file_chain(wd: Path, _out: str) -> bool:
     f = wd / "notes.txt"
     if not f.exists():
         return False
-    lines = [ln.strip() for ln in f.read_text(encoding="utf-8").splitlines()]
+    lines = [ln.strip() for ln in
+             f.read_text(encoding="utf-8-sig").splitlines()]
     return lines == ["alpha", "1"]
 
 
@@ -82,7 +113,41 @@ def _grade_count_files(wd: Path, _out: str) -> bool:
     f = wd / "answer.txt"
     if not f.exists():
         return False
-    return f.read_text(encoding="utf-8").strip() == "3"
+    return f.read_text(encoding="utf-8-sig").strip() == "3"
+
+
+def _grade_csv(wd: Path, _out: str) -> bool:
+    f = wd / "total.txt"
+    if not f.exists():
+        return False
+    return f.read_text(encoding="utf-8-sig").strip() == "26.50"
+
+
+def _grade_json(wd: Path, _out: str) -> bool:
+    import json as _json
+    f = wd / "config.json"
+    if not f.exists():
+        return False
+    try:
+        doc = _json.loads(f.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return False
+    return doc == {"name": "app", "debug": True, "ports": [80]}
+
+
+def _grade_grep_fix(wd: Path, _out: str) -> bool:
+    if not (wd / "calc.py").exists() or not (wd / "test_area.py").exists():
+        return False
+    proc = subprocess.run([sys.executable, "test_area.py"], cwd=str(wd),
+                          capture_output=True, text=True, timeout=60)
+    return proc.returncode == 0 and "PASS" in proc.stdout
+
+
+def _grade_logs(wd: Path, _out: str) -> bool:
+    f = wd / "report.txt"
+    if not f.exists():
+        return False
+    return f.read_text(encoding="utf-8-sig").strip() == "errors: 3"
 
 
 MULTI_TASKS = {
@@ -110,6 +175,38 @@ MULTI_TASKS = {
         "fixture": _fixture_files,
         "grade": _grade_count_files,
     },
+    "ms-csv-sum": {
+        "prompt": ("Work step by step in the current directory. In sales.csv, "
+                   "sum the amount column for rows where region is EU. Write "
+                   "the total with two decimals (e.g. 12.34) to total.txt, "
+                   "then print it."),
+        "fixture": _fixture_csv,
+        "grade": _grade_csv,
+    },
+    "ms-json-edit": {
+        "prompt": ("Work step by step in the current directory. Edit "
+                   "config.json: set debug to true and remove 443 from the "
+                   "ports list (keep the other values intact). Write the file "
+                   "back as valid JSON, then print it."),
+        "fixture": _fixture_json,
+        "grade": _grade_json,
+    },
+    "ms-grep-fix": {
+        "prompt": ("Work step by step in the current directory. Run "
+                   "`python test_area.py` and observe the failure. Find the "
+                   "bug in calc.py (the circle-area formula is wrong), fix "
+                   "it, re-run the test to prove it, then print PASS."),
+        "fixture": _fixture_grep_bug,
+        "grade": _grade_grep_fix,
+    },
+    "ms-log-report": {
+        "prompt": ("Work step by step in the current directory. Count all "
+                   "lines containing ERROR across a.log, b.log and c.log. "
+                   "Write exactly 'errors: <N>' to report.txt, then print "
+                   "it."),
+        "fixture": _fixture_logs,
+        "grade": _grade_logs,
+    },
 }
 
 
@@ -129,6 +226,54 @@ def build_cmd(name: str, binary: str, model: str, prompt: str) -> list[str]:
     raise KeyError(name)
 
 
+def _receipts_path():
+    """Where receipt rows live on this machine. Env override first (a
+    harness install may write elsewhere); default is the fleet receipts
+    dir. Absent = no cost join is attempted (honest 'unrecorded')."""
+    env = os.environ.get("STARLIGHT_RECEIPTS_READ")
+    cands = [Path(env)] if env else []
+    cands.append(HERE.parent / "receipts" / "opencode.jsonl")
+    for p in cands:
+        if p.exists():
+            return p
+    return None
+
+
+def _join_cost(model: str, t0: float, t1: float):
+    """Sum receipt costs in the run's time window for the same model.
+
+    Window join is an approximation (plugins timestamp per step, the
+    eval row per task) - documented as such; a model that matches no
+    receipt leaves cost unrecorded rather than inventing a number."""
+    path = _receipts_path()
+    if not path or not model:
+        return None
+    tail = model.rsplit("/", 1)[-1]
+    total, found = 0.0, False
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            ts = r.get("ts")
+            if not ts:
+                continue
+            try:
+                t = datetime.fromisoformat(ts).timestamp()
+            except ValueError:
+                continue
+            if not (t0 - 2 <= t <= t1 + 5):
+                continue
+            mid = r.get("modelID") or ""
+            if mid and (mid == tail or mid.endswith("/" + tail)
+                        or tail.endswith(mid)):
+                found = True
+                total += float(r.get("cost_usd") or 0)
+    except (OSError, ValueError):
+        return None
+    return round(total, 6) if found else None
+
+
 def run_task(name: str, task: str, model: str, timeout: int,
              runner=None) -> dict:
     binary = resolve(name)
@@ -144,6 +289,8 @@ def run_task(name: str, task: str, model: str, timeout: int,
         "mode": "agentic",
         "ok": False,
     }
+    if name == "codex":
+        rec["policy"] = os.environ.get("CODEX_SANDBOX", "workspace-write")
     try:
         spec["fixture"](workdir)
         cmd = build_cmd(name, binary, model, spec["prompt"])
@@ -169,6 +316,9 @@ def run_task(name: str, task: str, model: str, timeout: int,
             if not err:
                 err = f"grader raised: {type(e).__name__}: {e}"[:300]
         rec["ok"] = ok
+        cost = _join_cost(model or f"{name}/default", t0, time.time())
+        if cost is not None:
+            rec["cost_usd"] = cost
         # never record absolute machine paths: replies may link their
         # temp files; the sample becomes public-grade text only
         import re as _re
@@ -200,17 +350,26 @@ def report() -> int:
         return 0
     agg = {}
     for r in rows:
-        key = (r.get("harness"), r.get("model"))
-        a = agg.setdefault(key, {"n": 0, "ok": 0, "ms": []})
+        pol = r.get("policy") or ("workspace-write"
+                                  if r.get("harness") == "codex" else "-")
+        key = (r.get("harness"), r.get("model"), pol)
+        a = agg.setdefault(key, {"n": 0, "ok": 0, "ms": [],
+                                 "cost": 0.0, "cost_n": 0})
         a["n"] += 1
         a["ok"] += int(bool(r["ok"]))
         if r.get("latency_ms"):
             a["ms"].append(r["latency_ms"])
-    print("| harness | model | n | pass | avg latency |")
-    print("|---|---|---|---|---|")
-    for (h, m), a in sorted(agg.items()):
+        if r.get("cost_usd") is not None:
+            a["cost"] += float(r["cost_usd"])
+            a["cost_n"] += 1
+    print("| harness | model | policy | n | pass | avg latency | $/task |")
+    print("|---|---|---|---|---|---|---|")
+    for (h, m, pol), a in sorted(agg.items()):
         lat = f"{sum(a['ms']) // len(a['ms'])} ms" if a["ms"] else "n/a"
-        print(f"| {h} | {m} | {a['n']} | {a['ok'] / a['n']:.0%} | {lat} |")
+        cost = (f"${a['cost'] / a['cost_n']:.6f}"
+                if a["cost_n"] else "unrecorded")
+        print(f"| {h} | {m} | {pol} | {a['n']} | {a['ok'] / a['n']:.0%} | "
+              f"{lat} | {cost} |")
     return 0
 
 
@@ -236,12 +395,33 @@ def selftest() -> int:
             Path(wd, "answer.txt").write_text("3", encoding="utf-8")
             return "3", ""
 
+        def good_csv(_c, _t, wd):
+            Path(wd, "total.txt").write_text("26.50", encoding="utf-8")
+            return "26.50", ""
+
+        def good_json(_c, _t, wd):
+            Path(wd, "config.json").write_text(
+                '{"name": "app", "debug": true, "ports": [80]}',
+                encoding="utf-8")
+            return "{}", ""
+
+        def good_grep(_c, _t, wd):
+            Path(wd, "calc.py").write_text(
+                "def area(r):\n    return 3.14 * r * r\n", encoding="utf-8")
+            return "PASS", ""
+
+        def good_logs(_c, _t, wd):
+            Path(wd, "report.txt").write_text("errors: 3", encoding="utf-8")
+            return "errors: 3", ""
+
         def noop(_c, _t, _wd):
             return "", ""
 
         cases = (
             ("ms-file-chain", good_chain), ("ms-fix-test", good_fix),
-            ("ms-count-files", good_count),
+            ("ms-count-files", good_count), ("ms-csv-sum", good_csv),
+            ("ms-json-edit", good_json), ("ms-grep-fix", good_grep),
+            ("ms-log-report", good_logs),
         )
         for task, runner in cases:
             rec = run_task("claude", task, "", 30, runner=runner)
@@ -285,11 +465,41 @@ def selftest() -> int:
     if rec.get("ok") or not rec.get("error", "").startswith("grader raised"):
         fails.append("raising grader must record a failed row, not abort")
 
+    # receipts cost join: window+model match sums the steps; a model with
+    # no matching receipt stays 'unrecorded' (never an invented number)
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as td:
+        rp = Path(td) / "receipts.jsonl"
+        now = datetime.now(timezone.utc).isoformat()
+        rp.write_text(
+            json.dumps({"ts": now, "modelID": "deepseek-v4.1-flash",
+                        "cost_usd": 0.0002}) + "\n"
+            + json.dumps({"ts": now, "modelID": "other-model",
+                          "cost_usd": 9.99}) + "\n",
+            encoding="utf-8")
+        real_env = os.environ.get("STARLIGHT_RECEIPTS_READ")
+        os.environ["STARLIGHT_RECEIPTS_READ"] = str(rp)
+        try:
+            import time as _time
+            t = _time.time()
+            got = _join_cost("vercel/deepseek/deepseek-v4.1-flash", t, t)
+            none = _join_cost("claude/default", t, t)
+        finally:
+            if real_env is None:
+                os.environ.pop("STARLIGHT_RECEIPTS_READ", None)
+            else:
+                os.environ["STARLIGHT_RECEIPTS_READ"] = real_env
+    if got != 0.0002:
+        fails.append(f"cost join must sum matching model receipts (got {got})")
+    if none is not None:
+        fails.append("unmatched model must stay unrecorded (got a number)")
+
     if fails:
         print("AGENTIC EVAL SELFTEST FAIL: " + "; ".join(fails))
         return 1
-    print("agentic eval selftest OK: 3 workspace graders (right/untouched/"
-          "raising), permission flags, missing-binary skip")
+    print("agentic eval selftest OK: 7 workspace graders (right/untouched/"
+          "raising), permission flags, missing-binary skip, cost join "
+          "(window+model, unrecorded stays unrecorded)")
     return 0
 
 

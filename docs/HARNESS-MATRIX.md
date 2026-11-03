@@ -22,29 +22,39 @@ receipts join (plugin/adapter ledgers) is the next step before any
 $/pass number is published for them. Full-matrix runs are the next
 wave (22 tasks x 4 harnesses).
 
-## Measured agentic (multi-step) matrix (2026-11-03)
+## Measured agentic (multi-step) matrix (2026-11-03, 7 tasks)
 
 `fleet/agentic_eval.py` — fixtures placed in a throwaway workdir, one
-prompt forcing a tool loop (create/read/write, run/fix/verify), graded
-on the **resulting workspace state**:
+prompt forcing a tool loop, graded on the **resulting workspace state**.
+Tasks: file-chain, fix-test, count-files, csv-sum, json-edit, grep-fix,
+log-report. $/task is the receipts window-join where measurable
+(approximation, documented); unrecorded stays unrecorded.
 
-| harness | model | n | pass | avg latency |
-|---|---|---|---|---|
-| opencode | vercel/deepseek-v4.1-flash | 3 | 100% | **18.5 s** |
-| grok | default (plan) | 3 | 100% | 28.5 s |
-| claude | default (plan) | 3 | 100% | 39.3 s |
-| codex | default (plan) | 3 | 67% | ~70 s |
+| harness | model | policy | n | pass | avg latency | $/task |
+|---|---|---|---|---|---|---|
+| opencode | vercel/deepseek-v4.1-flash | auto | 10 | **100%** | **15.1 s** | **$0.081** |
+| grok | default (plan) | acceptEdits | 11 | 91% | 25.4 s | plan |
+| codex | default (plan) | danger-full-access | 7 | **100%** | 36.5 s | plan |
+| codex | default (plan) | workspace-write | 10 | 70% | 58.7 s | plan |
+| claude | default (plan) | acceptEdits | 10 | **100%** | 38.7 s | plan |
 
-Codex's one failure is recorded verbatim: it reported "there is no
-`data` directory in the current directory" on the count task while its
-fix-test task passed — a fixture-location/sandbox difference, not a
-capability claim. Its rail needs `--skip-git-repo-check` outside git
-dirs (learned live).
+Findings:
 
-**Agentic signal:** every harness can execute a multi-step tool loop;
-the differentiator is latency and reliability, not capability at this
-level. DS-flash finishes the same agentic task in half the time of the
-subscription rails.
+- **All harnesses execute multi-step tool loops.** At this task level
+  the differentiator is latency, reliability, and sandbox policy — not
+  capability.
+- **codex's workspace-write sandbox is the failure (not the model)**: it
+  denied reads of the throwaway workspace inconsistently ("Permission
+  denied", "couldn't find config.json"). The same 7 tasks with
+  `danger-full-access`: **7/7**. Policy is recorded per row so mixed
+  policy data can never be silently averaged.
+- **grok is flaky on one task**: file-chain failed once ("I'll create…"
+  with no tool action) and passed on retry — recorded as n=2, 91%
+  overall, not rounded away.
+- **Agentic metering is real**: opencode+DS-flash agent loops cost
+  **$0.081/task** (context grows per step) vs $0.000138 for a
+  single-shot battery task — ~600x. See COST-MODEL.md for what that
+  means at volume.
 
 ## What the numbers already say
 

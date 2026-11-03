@@ -14,26 +14,38 @@ confirm** — they are not billing data we can read from the machines.
 | gateway, DS-flash (`vercel/deepseek/deepseek-v4.1-flash`) | 234 | 228 | $0.0324 | **$0.000138** | $0.000142 |
 | gateway, glm-5.3 (`vercel/zai/glm-5.3`) | 23 | 21 | $0.0407 | **$0.001771** | $0.001940 |
 | gateway, all rows | 257 | 249 | $0.0731 | $0.000284 | $0.000294 |
+| **agentic** (opencode + DS-flash, tool loop) | 10 | 10 | $0.8118 | **$0.081181** | $0.081181 |
 
-Read that again: **glm-5.3 costs ~12.8x per task what DS-flash costs.**
-This ledger is the measured basis for the code-class routing migration
-already applied (primary -> DS-flash, glm first fallback).
+Read that again: **glm-5.3 costs ~12.8x per single-shot task what
+DS-flash costs** — the measured basis for the code-class routing
+migration already applied. And **an agentic task through the metered
+rail costs ~600x a single-shot task** ($0.081 vs $0.000138): the agent
+loop's context grows every step, and every step is billed.
 
-Subscription rails (claude/codex/grok) and the opencode CLI runs record
-no per-task cost in eval rows — their value is flat-rate. `$/pass` for
-them is honestly **n/a (plan)**, never invented.
+Subscription rails (claude/codex/grok) record no per-task cost in eval
+rows — their value is flat-rate; `$/pass` for them is honestly
+**n/a (plan)**, never invented.
 
 ## Monthly projection at our cadence
 
-Nightly battery = 22 tasks x 30 days = **660 tasks/month**.
+Nightly single-shot battery = 22 tasks x 30 days = **660 tasks/month**.
+Agentic cadence is a choice; at 660 agentic tasks/month:
 
-| rail | $/month at 660 tasks | note |
-|---|---|---|
-| DS-flash metered | **~$0.09** | measured unit cost |
-| glm metered | ~$1.17 | measured unit cost |
-| ChatGPT Max (Codex included) | ~$200 flat | assumption (Frank's plan) |
-| Claude plan | unknown | confirm plan tier/price |
-| Grok plan | unknown | confirm plan tier/price |
+| rail | single-shot 660/mo | agentic 660/mo | note |
+|---|---|---|---|
+| DS-flash metered | **~$0.09** | **~$53.6** | measured unit costs |
+| glm metered | ~$1.17 | (not measured agentic) | measured single-shot |
+| ChatGPT Max (Codex included) | ~$200 flat | ~$200 flat | assumption |
+| Claude plan | unknown | unknown | confirm tier/price |
+| Grok plan | unknown | unknown | confirm tier/price |
+
+The agentic projection changes the verdict shape: **metered is
+effectively free for measurement, but not for agentic volume.** $53/mo
+of metered agentic is still below a $200 flat plan — yet the flat plan
+also buys interactive sessions, while its agentic usage sits inside
+quota windows. The honest rule: single-shot measurement -> metered;
+agentic volume -> flat plan when you already pay for it, metered when
+you don't.
 
 ## Break-even vs a $200/mo flat plan
 
@@ -96,12 +108,17 @@ of the subscription rails.
 
 ## Verdict
 
-- **Measurement + latency-sensitive routing**: metered DS-flash
-  (measured cheapest and fastest; $0.09/mo at nightly volume).
-- **Interactive deep work**: keep the flat plans — they buy sessions,
-  not tasks; their marginal battery cost is zero but their quota
-  windows are not.
+- **Single-shot measurement**: metered DS-flash (measured cheapest and
+  fastest; ~$0.09/mo at nightly volume).
+- **Agentic volume**: metered costs ~$0.081/task (~$54/mo at nightly
+  cadence) — real money; flat plans you already pay for absorb it
+  inside quotas (codex 7/7 on its plan; claude 10/10). Use metered
+  agentic where you don't already hold a plan, or for latency-critical
+  loops.
+- **Interactive deep work**: keep the flat plans — they buy sessions;
+  their marginal battery cost is zero but their quota windows are not.
 - **glm**: only where its quality edge justifies ~13x the per-task
   cost; today the probe shows no such edge.
-- Next step: receipts join so metered CLI runs (opencode/DS through
-  the plugin) also carry measured $/task instead of "unrecorded".
+- Next steps: receipts join shipped this wave (window+model, tight
+  window); next refinement is step-level accounting if the agent loop
+  cost matters more (context-size optimization beats skipping steps).
