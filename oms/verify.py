@@ -3,6 +3,8 @@
 
 Verifies the OmS package is self-consistent before anything ships:
  1. every manifest file exists
+ 1b. every shipped fleet/corps file is manifest-listed (packages only) -
+     the export wipe would silently delete an unlisted file
  2. the schema parses, and its eval_battery task list matches the battery
     actually implemented in harness_eval.py
  3. harness_eval selftest passes (checkers vs ground truth, no model calls)
@@ -34,6 +36,24 @@ def main() -> None:
     # 1. manifest file list
     missing = [f["path"] for f in manifest["files"] if not (ROOT / f["path"]).exists()]
     check("manifest files resolve", not missing, f"missing: {missing}" if missing else f"{len(manifest['files'])} files")
+
+    # 1b. shipped-surface coverage (packages only: SANITIZATION.md marks a
+    # generated package; the private dev tree is the source, not a package).
+    # Every fleet script and corps file present must be manifest-listed -
+    # the export wipes-and-recopies from this manifest, so an unlisted file
+    # is silently deleted on the next regen (the 2026-11-03 corps wipe).
+    if (ROOT / "SANITIZATION.md").exists():
+        listed = {f["path"] for f in manifest["files"]}
+        present = {p.relative_to(ROOT).as_posix()
+                   for p in (ROOT / "fleet").glob("*.py")}
+        if (ROOT / ".opencode").exists():
+            present |= {p.relative_to(ROOT).as_posix()
+                        for p in (ROOT / ".opencode").rglob("*")
+                        if p.is_file() and "__pycache__" not in p.parts}
+        orphaned = sorted(present - listed)
+        check("shipped surface fully manifest-listed", not orphaned,
+              f"unlisted (would be wiped on regen): {orphaned}"
+              if orphaned else f"{len(present)} fleet/corps files covered")
 
     # 2. schema <-> battery task list
     schema = json.loads((ROOT / manifest["schema"]).read_text(encoding="utf-8"))

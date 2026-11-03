@@ -27,7 +27,7 @@
     },
     {
       "path": "fleet/harness_eval.py",
-      "role": "18-task deterministic battery + runner + report"
+      "role": "22-task deterministic battery + runner + report"
     },
     {
       "path": "fleet/run_opencode.py",
@@ -76,6 +76,30 @@
     {
       "path": "fleet/omo_bridge.py",
       "role": "OmO SUCCESS.md bar -> graded harness rows (owner != verifier enforced, check names must resolve to real battery checkers)"
+    },
+    {
+      "path": "fleet/agents_selftest.py",
+      "role": "corps contract selftest: frontmatter/model/mode/permission validation + leak rule + negative fixtures"
+    },
+    {
+      "path": ".opencode/agents/scout.md",
+      "role": "corps: read-only mapping agent (measured free scout rail)"
+    },
+    {
+      "path": ".opencode/agents/reviewer.md",
+      "role": "corps: adversarial review agent (reproduce-first, negative cases)"
+    },
+    {
+      "path": ".opencode/commands/battery.md",
+      "role": "corps command: run the free battery rail, report per-task pass/fail"
+    },
+    {
+      "path": ".opencode/commands/nightly-dry.md",
+      "role": "corps command: dry-run the nightly gates (prep + cap + selftests, no spend)"
+    },
+    {
+      "path": ".opencode/commands/reports.md",
+      "role": "corps command: three-state page selftest + page regeneration"
     },
     {
       "path": "fleet/adapters/claude-code/hook_receipt.py",
