@@ -13,6 +13,7 @@ Order (each step logs one line):
 Usage: python nightly_eval.py          -> the full night (no argv = schtasks)
        python nightly_eval.py prep     -> refresh checkout, refuse stale
        python nightly_eval.py selftest -> stubbed rc-propagation checks
+       python nightly_eval.py --gateway-only -> cloud executor (paid rail)
 Any other argument REFUSES (exit 2) - never a fall-through into a real
 unattended battery (the 2026-11-02 catch).
 
@@ -105,7 +106,7 @@ def prep() -> int:
     return 0
 
 
-def run_night() -> int:
+def run_night(gateway_only: bool = False) -> int:
     """The night's steps; returns the process exit code.
 
     Measurement steps (gateway battery, cross-harness report) are
@@ -135,6 +136,10 @@ def run_night() -> int:
         (["fleet/agents_selftest.py"], "corps contract selftest"),
         (["fleet/reports_selftest.py"], "page builder selftest"),
     ):
+        if not (HERE.parent / selftest[0]).exists():
+            print(f"[nightly] preflight SKIP: {selftest[0]} not present "
+                  "(install shape) - logged, never silent")
+            continue
         rc = run(selftest, label)
         if rc != 0:
             print(f"[nightly] preflight FAIL: {label} rc={rc} - battery "
@@ -161,7 +166,10 @@ def run_night() -> int:
 
     # 3. free opencode rail only with real headroom
     ram = free_ram()
-    if ram >= RAM_MIN:
+    if gateway_only:
+        print("[nightly] opencode rail SKIP: --gateway-only (cloud executor "
+              "runs the paid rail; the free rail is a local bonus)")
+    elif ram >= RAM_MIN:
         rc = run(["fleet/run_opencode.py", "--model", OPENCODE_MODEL],
                  f"opencode battery {OPENCODE_MODEL}")
         if rc != 0:
@@ -234,6 +242,31 @@ def selftest() -> int:
         fails.append("failing report must fail the night")
     if stub_night() != 0:
         fails.append("clean night must pass (rc=0)")
+
+    # --gateway-only: the cloud executor shape must never touch the free
+    # rail (no opencode binary there; a missing binary would write
+    # dishonest red rows through run_opencode's OSError path)
+    seen = []
+    real_run = globals()["run"]
+    real_prep = globals()["prep"]
+    real_ram = globals()["free_ram"]
+
+    def recording_run(args, label):
+        seen.append(label)
+        return 0
+
+    globals()["run"] = recording_run
+    globals()["prep"] = lambda: 0
+    globals()["free_ram"] = lambda: RAM_MIN
+    try:
+        rc_gw = run_night(gateway_only=True)
+    finally:
+        globals()["run"], globals()["prep"], globals()["free_ram"] = \
+            real_run, real_prep, real_ram
+    if rc_gw != 0:
+        fails.append("gateway-only clean night must pass")
+    if any("opencode battery" in label for label in seen):
+        fails.append("--gateway-only must skip the free opencode rail")
     # argv contract: a typo-shaped invocation must REFUSE (exit 2), never
     # fall through into an unattended real battery. Real subprocess; the
     # child exits at the refusal before any step runs.
@@ -247,7 +280,8 @@ def selftest() -> int:
         print("NIGHTLY SELFTEST FAIL: " + "; ".join(fails))
         return 1
     print("nightly selftest OK: rc propagation holds on all 5 cases; "
-          "preflight fail-closed; unknown argv refuses")
+          "preflight fail-closed; gateway-only skips the free rail; "
+          "unknown argv refuses")
     return 0
 
 
@@ -265,8 +299,13 @@ def main() -> None:
         raise SystemExit(prep())
     if argv[0] == "selftest":
         raise SystemExit(selftest())
+    if argv[0] == "--gateway-only":
+        # cloud executor shape (GitHub Actions): paid rail only, no
+        # local opencode binary, no RAM dependency
+        raise SystemExit(run_night(gateway_only=True))
     print(f"[nightly] refusing unknown argument(s) {argv!r} - "
-          "usage: nightly_eval.py [prep|selftest]", file=sys.stderr)
+          "usage: nightly_eval.py [prep|selftest|--gateway-only]",
+          file=sys.stderr)
     raise SystemExit(2)
 
 
