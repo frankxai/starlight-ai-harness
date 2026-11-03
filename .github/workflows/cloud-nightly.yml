@@ -1,0 +1,65 @@
+# Cloud nightly executor — Phase 1 of the harness-federation rollout
+# (docs/plans/HARNESS-FEDERATION-ROLLOUT-2026-11-03.md in the private SoT).
+#
+# INERT BY DESIGN until Frank enables it:
+#   1. Repository secret GATEWAY_KEY = the vck_ gateway key (never in repo)
+#   2. Uncomment the schedule block below
+# Until then it can be run manually: Actions -> cloud-nightly-battery -> Run workflow
+# (manual dispatch without the secret fails fast at the config step, pre-spend).
+#
+# This is the FULL 22-task battery (paid rail). The checkers-only gate on
+# hosted runners lives in nightly-battery.yml (name: battery-selftest).
+name: cloud-nightly-battery
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "30 2 * * *"   # 03:30 CET / 02:30 UTC — enable after GATEWAY_KEY
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-nightly-battery
+  cancel-in-progress: false
+
+jobs:
+  battery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Write gateway config from secret (never in repo)
+        env:
+          GATEWAY_KEY: ${{ secrets.GATEWAY_KEY }}
+        run: |
+          set -e
+          if [ -z "$GATEWAY_KEY" ]; then
+            echo "::error::GATEWAY_KEY secret missing — add it in Settings > Secrets, then rerun. No spend occurred."
+            exit 1
+          fi
+          mkdir -p "$HOME/.config/opencode"
+          printf '{"provider":{"vercel":{"options":{"apiKey":"%s"}}}}' "$GATEWAY_KEY" \
+            > "$HOME/.config/opencode/opencode.json"
+
+      - name: Nightly (prep -> preflight -> cap -> 22-task battery -> report -> pages)
+        run: python -B fleet/nightly_eval.py --gateway-only
+
+      - name: Upload night artifacts (rows, report, pages, transcript)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ github.run_id }}
+          path: |
+            fleet/evals/eval_results.jsonl
+            fleet/reports/cross-harness-latest.json
+            fleet/reports/cross-harness-latest.md
+            fleet/reports/*.html
+            fleet/reports/night/*.log
+          if-no-files-found: warn
+          retention-days: 30
