@@ -22,6 +22,30 @@ receipts join (plugin/adapter ledgers) is the next step before any
 $/pass number is published for them. Full-matrix runs are the next
 wave (22 tasks x 4 harnesses).
 
+## Measured agentic (multi-step) matrix (2026-11-03)
+
+`fleet/agentic_eval.py` — fixtures placed in a throwaway workdir, one
+prompt forcing a tool loop (create/read/write, run/fix/verify), graded
+on the **resulting workspace state**:
+
+| harness | model | n | pass | avg latency |
+|---|---|---|---|---|
+| opencode | vercel/deepseek-v4.1-flash | 3 | 100% | **18.5 s** |
+| grok | default (plan) | 3 | 100% | 28.5 s |
+| claude | default (plan) | 3 | 100% | 39.3 s |
+| codex | default (plan) | 3 | 67% | ~70 s |
+
+Codex's one failure is recorded verbatim: it reported "there is no
+`data` directory in the current directory" on the count task while its
+fix-test task passed — a fixture-location/sandbox difference, not a
+capability claim. Its rail needs `--skip-git-repo-check` outside git
+dirs (learned live).
+
+**Agentic signal:** every harness can execute a multi-step tool loop;
+the differentiator is latency and reliability, not capability at this
+level. DS-flash finishes the same agentic task in half the time of the
+subscription rails.
+
 ## What the numbers already say
 
 - **Quality**: all four harnesses solve the probe tasks at 100% when

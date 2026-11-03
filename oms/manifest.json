@@ -86,8 +86,16 @@
       "role": "same battery through every installed harness (claude/codex/grok/opencode): one eval row per harness+task, markdown matrix report, hermetic selftest"
     },
     {
+      "path": "fleet/agentic_eval.py",
+      "role": "agentic (multi-step) battery: fixtures in a throwaway workdir, tool-loop prompts, workspace-state graders; permission flags per harness"
+    },
+    {
       "path": "docs/HARNESS-MATRIX.md",
       "role": "measured harness matrix: pass rate, latency, cost honesty per rail"
+    },
+    {
+      "path": "docs/COST-MODEL.md",
+      "role": "measured unit costs + break-even vs flat plans + considerations"
     },
     {
       "path": ".opencode/agents/scout.md",
