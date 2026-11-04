@@ -743,15 +743,35 @@ def cmd_run_gateway(args):
     ts = datetime.now(timezone.utc).isoformat()
     tasks = args.tasks.split(",") if args.tasks else list(TASKS)
     results = {}
-    for task in tasks:
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _call(task):
+        """One task: call, grade, record. Retries a 429/5xx/timeout once."""
         spec = TASKS[task]
-        try:
-            r = gateway_call(args.model, spec["prompt"])
-        except (RuntimeError, urllib.error.URLError) as e:
-            results[task] = {"error": str(e)}
+        for attempt in range(2):
+            try:
+                r = gateway_call(args.model, spec["prompt"])
+                return r, None
+            except (RuntimeError, urllib.error.URLError) as e:
+                msg = str(e)
+                transient = ("429" in msg or "timeout" in msg.lower()
+                             or "timed out" in msg.lower()
+                             or " 5" in msg)
+                if attempt == 0 and transient:
+                    _time.sleep(1.0)
+                    continue
+                return None, msg
+        return None, "retry exhausted"
+
+    def run_task(task):
+        spec = TASKS[task]
+        r, err = _call(task)
+        if err is not None:
+            results[task] = {"error": err}
             append({"ts": ts, "model": args.model, "task": task, "ok": False,
-                    "error": str(e), "harness": "gateway"})
-            continue
+                    "error": err, "harness": "gateway"})
+            return task, False
         try:
             ok = bool(spec["check"](r["content"]))
         except Exception as e:
@@ -760,7 +780,7 @@ def cmd_run_gateway(args):
             results[task] = {"error": f"checker raised: {e}"}
             append({"ts": ts, "model": args.model, "task": task, "ok": False,
                     "error": f"checker raised: {e}", "harness": "gateway"})
-            continue
+            return task, False
         u = r.get("usage", {}) or {}
         reasoning_only = bool(u.get("completion_tokens", 0)) and not r["content"].strip()
         rec = {"ts": ts, "model": args.model, "task": task, "ok": ok,
@@ -778,7 +798,23 @@ def cmd_run_gateway(args):
                 rec["cost_usd"] = cost
         append(rec)
         results[task] = {"ok": ok, "latency_ms": r["latency_ms"]}
+        return task, ok
+
+    workers = max(1, getattr(args, "concurrency", 1) or 1)
+    t_start = _time.time()
+    if workers == 1:
+        for task in tasks:
+            run_task(task)
+    else:
+        # throughput lever: the gateway serves independent calls in
+        # parallel; the wall clock becomes the slowest batch, not the sum
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for task, ok in pool.map(run_task, tasks):
+                print(f"{task}: {'pass' if ok else 'fail'}")
+    wall = _time.time() - t_start
     print(json.dumps(results, indent=2))
+    if workers > 1:
+        print(f"concurrency={workers} wall={wall:.1f}s for {len(tasks)} tasks")
 
 
 def cmd_record(args):
@@ -949,6 +985,9 @@ def main():
     g = sub.add_parser("run-gateway")
     g.add_argument("--model", required=True)
     g.add_argument("--tasks", default="")
+    g.add_argument("--concurrency", type=int, default=1,
+                   help="parallel task calls (gateway serves independent "
+                        "calls concurrently; wall clock = slowest batch)")
     g.set_defaults(func=cmd_run_gateway)
     r = sub.add_parser("record")
     r.add_argument("--model", required=True)

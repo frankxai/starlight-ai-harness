@@ -98,6 +98,10 @@
       "role": "measured unit costs + break-even vs flat plans + considerations"
     },
     {
+      "path": "docs/VELOCITY.md",
+      "role": "why the gateway rail is fast (decomposition), measured concurrency sweet spot, and the remaining latency levers"
+    },
+    {
       "path": ".opencode/agents/scout.md",
       "role": "corps: read-only mapping agent (measured free scout rail)"
     },
