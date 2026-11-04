@@ -43,10 +43,24 @@ def main() -> None:
                 capture_output=True, text=True, timeout=args.timeout)
             latency_ms = int((time.time() - t0) * 1000)
             if proc.returncode != 0:
+                err = proc.stderr or ""
+                if "usage limit" in err.lower():
+                    # daily cap on the free rail: stop with ONE honest
+                    # marker row, never N red task rows (measured
+                    # 2026-11-03: 22 reds polluted the ledger per capped
+                    # night). The paid rail is the reliable one.
+                    he.append({"ts": datetime.now(timezone.utc).isoformat(),
+                               "model": args.model, "task": "__rail__",
+                               "ok": False, "harness": "opencode-plugin",
+                               "error": "free usage limit reached - rail "
+                                        "stopped (one marker, not per-task)"})
+                    print("opencode rail stopped: free usage limit reached "
+                          "(one marker row written)")
+                    return
                 rec = {"ts": datetime.now(timezone.utc).isoformat(),
                        "model": args.model, "task": task, "ok": False,
                        "latency_ms": latency_ms, "harness": "opencode-plugin",
-                       "error": (proc.stderr or "")[:300]}
+                       "error": err[:300]}
             else:
                 ok = bool(spec["check"](proc.stdout))
                 rec = {"ts": datetime.now(timezone.utc).isoformat(),

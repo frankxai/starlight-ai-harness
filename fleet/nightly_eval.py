@@ -3,7 +3,8 @@ r"""Nightly battery orchestrator (successor of the direct schtasks Arguments).
 
 Order (each step logs one line):
   1. night-cap gate: refuse below cap? (routing.schema.json night_cap_usd)
-  2. gateway rail: DS-flash full battery (schema-priced rows)
+  2. gateway rail: DS-flash full battery (schema-priced rows, parallel
+     at concurrency 3 - the measured sweet spot)
   3. opencode rail: free plugin-captured battery - ONLY if free RAM >= 4 GiB
      (control-only doctrine: never let an unattended battery push the
      machine down; skip line is recorded, nothing fails)
@@ -157,10 +158,13 @@ def run_night(gateway_only: bool = False) -> int:
               "entirely")
         return rc
 
-    # 2. gateway rail (records usage+cost now)
+    # 2. gateway rail (records usage+cost now). Concurrency 3 is the
+    # MEASURED sweet spot for this key/provider (22-task battery:
+    # 44.8s -> 10.9s; c=6 overloads). See docs/VELOCITY.md.
     failed: list[str] = []
     rc = run(["fleet/harness_eval.py", "run-gateway", "--model",
-              GATEWAY_MODEL], f"gateway battery {GATEWAY_MODEL}")
+              GATEWAY_MODEL, "--concurrency", "3"],
+             f"gateway battery {GATEWAY_MODEL}")
     if rc != 0:
         failed.append(f"gateway battery (rc={rc})")
 

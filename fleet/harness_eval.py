@@ -708,11 +708,39 @@ def append(result: dict) -> None:
         f.write(json.dumps(result) + "\n")
 
 
+LOAD_SKIPPED = 0   # malformed ledger lines skipped by load_results
+LOAD_MARKERS = 0   # __rail__ marker rows excluded (rail state, not tasks)
+
+
 def load_results() -> list[dict]:
+    """Well-formed battery rows only.
+
+    Malformed lines (truncated/corrupt appends) are skipped and counted,
+    never fatal - the same survival the weekly review already has.
+    Rail-stop markers (task __rail__) are excluded: they record rail
+    state, not a model task, and must never deflate a pass rate."""
+    global LOAD_SKIPPED, LOAD_MARKERS
+    LOAD_SKIPPED = 0
+    LOAD_MARKERS = 0
     if not RESULTS.exists():
         return []
-    return [json.loads(line) for line in
-            RESULTS.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = []
+    for line in RESULTS.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            LOAD_SKIPPED += 1
+            continue
+        if not isinstance(r, dict) or not {"model", "task", "ok"} <= set(r):
+            LOAD_SKIPPED += 1
+            continue
+        if r.get("task") == "__rail__":
+            LOAD_MARKERS += 1
+            continue
+        rows.append(r)
+    return rows
 
 
 def report() -> str:
@@ -972,6 +1000,36 @@ def cmd_selftest(args):
     code_ok = _check_code("def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9")
     if not code_ok:
         fails.append("code")
+
+    # ledger survival: corrupt lines skipped+counted, rail markers
+    # excluded from measurements (they are rail state, not tasks)
+    import tempfile as _tf
+    from pathlib import Path as _P
+    global RESULTS
+    with _tf.TemporaryDirectory() as td:
+        probe = _P(td) / "rows.jsonl"
+        probe.write_text(
+            '{"model": "m", "task": "math", "ok": 1}\n'
+            '{"model": "m", "task": "instruction", "ok": 0}\n'
+            '{"model": "m", "task": "__rail__", "ok": 0}\n'
+            '{"model": "m", "ta\n'
+            '{"not": "a row"}\n', encoding="utf-8")
+        old = RESULTS
+        RESULTS = probe
+        try:
+            got = load_results()
+        finally:
+            RESULTS = old
+        if len(got) != 2:
+            fails.append(f"load_results/corrupt+marker survival (got "
+                         f"{len(got)} rows)")
+        if LOAD_SKIPPED != 2:
+            fails.append(f"load_results/skipped count (got {LOAD_SKIPPED}, "
+                         "want 2)")
+        if LOAD_MARKERS != 1:
+            fails.append(f"load_results/marker count (got {LOAD_MARKERS}, "
+                         "want 1)")
+
     if fails:
         print(f"SELFTEST FAIL: {fails}")
         raise SystemExit(1)

@@ -37,8 +37,17 @@ STRONG_RATE = 0.95        # task pass rate >= this = strong
 def load_rows() -> list[dict]:
     if not RESULTS.exists():
         return []
-    return [json.loads(l) for l in
-            RESULTS.read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = []
+    for line in RESULTS.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # corrupt append: skip, never kill the card build
+        if isinstance(r, dict) and r.get("task") != "__rail__":
+            rows.append(r)  # __rail__ is rail state, not a graded task
+    return rows
 
 
 def build_cards(rows: list[dict]) -> dict:
