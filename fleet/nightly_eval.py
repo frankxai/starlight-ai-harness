@@ -36,8 +36,11 @@ Credentials: vck_ key read from ~/.config/opencode/opencode.json as before.
 import ctypes
 import ctypes.wintypes as wt
 import json
+import os
+import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -105,6 +108,39 @@ def prep() -> int:
         return 2
     print("[prep] at", git("rev-parse", "--short", "HEAD")[1].strip())
     return 0
+
+
+def archive_night():
+    """Copy the night's measured artifacts OUTSIDE the runtime worktree.
+
+    The nightly runs in a disposable checkout: if that worktree is wiped,
+    the night's rows and pages vanish with it. This local archive makes
+    them survive (rows, cross-harness report, pages, transcript). The
+    shared cloud sink is decision D3; local archive needs no gate.
+    Best-effort by design: an archive failure never fails the night."""
+    env = os.environ.get("STARLIGHT_NIGHT_ARCHIVE")
+    root = Path(env) if env else Path.home() / ".starlight" / "harness" / "nightly"
+    dst = root / datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    src = HERE.parent
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        files = [
+            src / "fleet" / "evals" / "eval_results.jsonl",
+            src / "fleet" / "reports" / "cross-harness-latest.json",
+            src / "fleet" / "reports" / "cross-harness-latest.md",
+            src / "fleet" / "reports" / "night" / "nightly-eval.log",
+        ]
+        files += sorted((src / "fleet" / "reports").glob("*.html"))
+        copied = 0
+        for f in files:
+            if f.exists():
+                shutil.copy2(f, dst / f.name)
+                copied += 1
+        print(f"[nightly] archived {copied} artifacts -> {dst}")
+        return dst
+    except OSError as e:
+        print(f"[nightly] archive skipped: {e}")
+        return None
 
 
 def run_night(gateway_only: bool = False) -> int:
@@ -198,6 +234,11 @@ def run_night(gateway_only: bool = False) -> int:
     ):
         run(builder, label)  # exit codes logged; nightly outcome is report + rows
 
+    # 5b. archive outside the runtime worktree (best-effort): rows,
+    # report, pages and transcript survive a worktree wipe; the shared
+    # cloud sink is decision D3
+    archive_night()
+
     if failed:
         print(f"[nightly] measurement steps failed: {'; '.join(failed)}")
         return 1
@@ -279,6 +320,26 @@ def selftest() -> int:
     if p.returncode != 2:
         fails.append(f"unknown argv must refuse with rc=2 "
                      f"(got rc={p.returncode})")
+
+    # night archive: artifacts land OUTSIDE the tree (survive worktree
+    # wipe). Asserts the destination, not a specific artifact: public
+    # installs ship no ledger (runtime data), so zero-artifact archives
+    # are legitimate there.
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as td:
+        real_env = os.environ.get("STARLIGHT_NIGHT_ARCHIVE")
+        os.environ["STARLIGHT_NIGHT_ARCHIVE"] = td
+        try:
+            dst = archive_night()
+            ok = dst is not None and Path(dst).exists()
+        finally:
+            if real_env is None:
+                os.environ.pop("STARLIGHT_NIGHT_ARCHIVE", None)
+            else:
+                os.environ["STARLIGHT_NIGHT_ARCHIVE"] = real_env
+    if not ok:
+        fails.append("night archive must create the dated destination "
+                     "outside the tree")
 
     if fails:
         print("NIGHTLY SELFTEST FAIL: " + "; ".join(fails))
