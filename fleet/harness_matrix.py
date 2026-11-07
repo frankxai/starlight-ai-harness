@@ -16,6 +16,7 @@ Usage:
   python fleet/harness_matrix.py selftest
 """
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -47,16 +48,72 @@ def resolve(name: str):
 
 def build_cmd(name: str, binary: str, model: str, prompt: str) -> list[str]:
     """Headless invocation per harness. Model is optional: a CLI without
-    --model uses its own default (its configured plan)."""
+    --model uses its own default (its configured plan). claude and codex
+    are asked for their NATIVE JSON so usage comes from the tool itself -
+    no plugin or config wires needed for receipts."""
     if name == "opencode":
         return [binary, "run"] + (["-m", model] if model else []) + [prompt]
     if name == "claude":
-        return [binary, "-p", prompt] + (["--model", model] if model else [])
+        return ([binary, "-p", prompt, "--output-format", "json"]
+                + (["--model", model] if model else []))
     if name == "codex":
-        return [binary, "exec"] + (["-m", model] if model else []) + [prompt]
+        return ([binary, "exec", "--json", "--skip-git-repo-check"]
+                + (["-m", model] if model else []) + [prompt])
     if name == "grok":
         return [binary, "--single", prompt] + (["-m", model] if model else [])
     raise KeyError(f"unknown harness: {name}")
+
+
+def extract(name: str, stdout: str):
+    """Split a harness reply into (answer_text, native_usage).
+
+    claude: one JSON object (result text + usage + total_cost_usd + error
+    state). codex: JSONL events - answer in the last agent_message,
+    usage on turn.completed. grok/opencode: plain text, no native usage
+    (opencode receipts come from the plugin; grok stays 'unrecorded')."""
+    text = (stdout or "").strip()
+    if not text:
+        return "", None
+    if name == "claude" and text.startswith("{"):
+        try:
+            doc = json.loads(text)
+        except ValueError:
+            return text, None
+        usage = doc.get("usage") or {}
+        nat = {
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "cache_read_tokens": usage.get("cache_read_input_tokens"),
+            "total_cost_usd": doc.get("total_cost_usd"),
+            "is_error": bool(doc.get("is_error")),
+            "api_error": doc.get("api_error"),
+        }
+        return str(doc.get("result") or ""), nat
+    if name == "codex":
+        answer, nat = "", None
+        for line in text.splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if (ev.get("type") == "item.completed"
+                    and (ev.get("item") or {}).get("type") == "agent_message"):
+                answer = (ev["item"].get("text") or "").strip() or answer
+            elif ev.get("type") == "turn.completed":
+                u = ev.get("usage") or {}
+                nat = {
+                    "input_tokens": u.get("input_tokens"),
+                    "output_tokens": u.get("output_tokens"),
+                    "cache_read_tokens": u.get("cached_input_tokens"),
+                    "total_cost_usd": None,
+                    "is_error": False,
+                    "api_error": None,
+                }
+        return answer, nat
+    return text, None
 
 
 def invoke(cmd: list[str], timeout: int,
@@ -114,11 +171,18 @@ def run_one(name: str, task: str, model: str, timeout: int,
         out, ms, err = runner(cmd, timeout, workdir)
     finally:
         _shutil.rmtree(workdir, ignore_errors=True)
+    # native usage first: claude/codex report it themselves; a claude
+    # API error (e.g. weekly limit) becomes an honest failed row with
+    # the reason, not an empty-reply mystery
+    text, nat = extract(name, out)
+    if nat and nat.get("is_error"):
+        native = str(nat.get("api_error") or "harness error")[:250]
+        err = (err + "; " if err else "") + f"native api_error: {native}"
     # a checker that raises on malformed output records a FAILED row,
     # never aborts the matrix (harness_eval's gateway battery does the
     # same; e.g. a regex reply can raise OverflowError)
     try:
-        ok = bool(err == "" and spec["check"](out))
+        ok = bool(err == "" and spec["check"](text))
     except Exception as e:  # noqa: BLE001 - checker robustness
         ok = False
         if not err:
@@ -131,8 +195,15 @@ def run_one(name: str, task: str, model: str, timeout: int,
         "latency_ms": ms,
         "harness": name,
         "cli_version": _version(binary),
-        "reply_sample": out[:300].strip(),
+        "reply_sample": text[:300].strip(),
     }
+    if nat:
+        usage = {k: v for k, v in nat.items()
+                 if k not in ("is_error", "api_error") and v is not None}
+        if usage:
+            rec["usage"] = usage
+        if nat.get("total_cost_usd") is not None:
+            rec["cost_usd"] = nat["total_cost_usd"]
     if err:
         rec["error"] = err
     return rec
@@ -266,6 +337,33 @@ def selftest() -> int:
         fails.append("metered model must not be labeled n/a (plan)")
     if _cost_label("claude/default") != "n/a (plan)":
         fails.append("subscription model must be labeled n/a (plan)")
+
+    # native usage extraction (hermetic fixtures): claude single JSON,
+    # claude api_error JSON, codex JSONL, plain text
+    import json as _json
+    c_ok = _json.dumps({"result": "24", "is_error": False,
+                        "total_cost_usd": 0.0002,
+                        "usage": {"input_tokens": 10, "output_tokens": 2,
+                                  "cache_read_input_tokens": 5}})
+    t, nat = extract("claude", c_ok)
+    if t != "24" or not nat or nat["total_cost_usd"] != 0.0002:
+        fails.append("claude JSON ok: text/usage extraction")
+    c_err = _json.dumps({"result": "limit", "is_error": True,
+                         "api_error": "usage_limit_reached", "usage": {}})
+    _, nat = extract("claude", c_err)
+    if not nat or not nat.get("is_error"):
+        fails.append("claude JSON error: is_error must be visible")
+    codex_out = ("{\"type\":\"turn.started\"}\n"
+                 "{\"type\":\"item.completed\",\"item\":{\"type\":"
+                 "\"agent_message\",\"text\":\"24\"}}\n"
+                 "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":"
+                 "37538,\"cached_input_tokens\":7296,\"output_tokens\":5}}")
+    t, nat = extract("codex", codex_out)
+    if t != "24" or not nat or nat["input_tokens"] != 37538:
+        fails.append("codex JSONL: answer/usage extraction")
+    t, nat = extract("grok", "24")
+    if t != "24" or nat is not None:
+        fails.append("plain text: passthrough, no invented usage")
 
     # cli_version is recorded (default-model rows must not mask version
     # changes behind a synthetic name)

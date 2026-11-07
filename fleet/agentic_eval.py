@@ -33,7 +33,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import harness_eval as he  # noqa: E402
-from harness_matrix import BIN_CANDIDATES, resolve  # noqa: E402
+from harness_matrix import BIN_CANDIDATES, extract, resolve  # noqa: E402
 
 MULTI_FLAGS = {
     "claude": ["--permission-mode", "acceptEdits"],
@@ -213,10 +213,10 @@ MULTI_TASKS = {
 def build_cmd(name: str, binary: str, model: str, prompt: str) -> list[str]:
     flags = MULTI_FLAGS[name]
     if name == "claude":
-        return [binary, "-p", prompt, *flags]
+        return [binary, "-p", prompt, "--output-format", "json", *flags]
     if name == "codex":
-        return [binary, "exec", *flags] + (["-m", model] if model else []) \
-            + [prompt]
+        return ([binary, "exec", "--json", *flags]
+                + (["-m", model] if model else []) + [prompt])
     if name == "grok":
         return [binary, *flags, "--single", prompt] \
             + (["-m", model] if model else [])
@@ -309,20 +309,33 @@ def run_task(name: str, task: str, model: str, timeout: int,
         else:
             out, err = runner(cmd, timeout, str(workdir))
         rec["latency_ms"] = int((time.time() - t0) * 1000)
+        # native usage (claude/codex JSON): a capped rail reports its
+        # API error honestly instead of an empty-reply mystery
+        text, nat = extract(name, out)
+        if nat and nat.get("is_error"):
+            native = str(nat.get("api_error") or "harness error")[:250]
+            err = (err + "; " if err else "") + f"native api_error: {native}"
+        if nat:
+            usage = {k: v for k, v in nat.items()
+                     if k not in ("is_error", "api_error") and v is not None}
+            if usage:
+                rec["usage"] = usage
+            if nat.get("total_cost_usd") is not None:
+                rec["cost_usd"] = nat["total_cost_usd"]
         try:
-            ok = err == "" and bool(spec["grade"](workdir, out))
+            ok = err == "" and bool(spec["grade"](workdir, text))
         except Exception as e:  # noqa: BLE001 - grader robustness
             ok = False
             if not err:
                 err = f"grader raised: {type(e).__name__}: {e}"[:300]
         rec["ok"] = ok
         cost = _join_cost(model or f"{name}/default", t0, time.time())
-        if cost is not None:
+        if cost is not None and "cost_usd" not in rec:
             rec["cost_usd"] = cost
         # never record absolute machine paths: replies may link their
         # temp files; the sample becomes public-grade text only
         import re as _re
-        sample = out.replace(str(workdir), "<workdir>")
+        sample = text.replace(str(workdir), "<workdir>")
         sample = _re.sub(r"[A-Za-z]:[/\\]+Users[/\\]+[^\s\"')]+",
                          "<path>", sample)
         rec["reply_sample"] = sample[:300].strip()
